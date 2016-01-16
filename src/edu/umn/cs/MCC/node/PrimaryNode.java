@@ -34,7 +34,7 @@ public class PrimaryNode {
 	
 	private static HashMap<String, Node> nodes = new HashMap<String, Node>();
 	private static Object nodesLock = new Object();
-	private static long updateFrequency = 30 * 1000;
+	private static long updateFrequency = 20 * 1000;
 	private static String cloudServer = "http://localhost:8080/MCCInterface/WebInterface";
 
 	private static long lastUpdate = 0;

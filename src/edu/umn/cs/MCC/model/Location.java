@@ -39,5 +39,17 @@ public class Location {
 		this.xPosition = (int) Math.floor((longitude + 180) / longitudeDivider);
 	}
 
+	@Override
+	public boolean equals(Object other) {
+	    if (!(other instanceof Location)) {
+	        return false;
+	    }
 
+	    Location that = (Location) other;
+
+	    // Custom equality check here.
+	    return this.gridSize == that.gridSize
+	    	&& this.xPosition == that.xPosition
+	        && this.yPosition == that.yPosition;
+	}
 }

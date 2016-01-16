@@ -31,17 +31,20 @@ public class CloudServer {
 
 	private static Object nodesLock = new Object();
 	private static HashMap<String, Node> primaryNodes = new HashMap<String, Node>();
-	private static HashMap<Location, HashMap<String, Double>> locationNodesMap = new HashMap<Location, HashMap<String, Double>>();
+	private static HashMap<Integer, HashMap<Integer, HashMap<String, Double>>> locationNodesMap = new HashMap<>();
+	// <x, <y, <id, score>>>
 
 	public static String getNode(Node mobileUser) {
 		String nodeId = null;
 		Double bestValue = 0.0;
 		Location loc = new Location(gridSize, mobileUser.getLatitude(), mobileUser.getLongitude());
+		int x = loc.getxPosition();
+		int y = loc.getyPosition();
 
 		// get node based on location
-		if (locationNodesMap.containsKey(loc)) {
+		if (locationNodesMap.containsKey(x) && locationNodesMap.get(x).containsKey(y)) {
 			// find the best node
-			for (Entry<String, Double> node: locationNodesMap.get(loc).entrySet()) {
+			for (Entry<String, Double> node: locationNodesMap.get(x).get(y).entrySet()) {
 				if (bestValue <= node.getValue()) {
 					nodeId = node.getKey();
 					bestValue = node.getValue();
@@ -52,14 +55,15 @@ public class CloudServer {
 				return null;
 
 			if (bestValue == Double.MAX_VALUE) {
-				for (Entry<String, Double> node: locationNodesMap.get(loc).entrySet()) {
-					locationNodesMap.get(loc).put(node.getKey(), 0.0);
+				for (Entry<String, Double> node: locationNodesMap.get(x).get(y).entrySet()) {
+					locationNodesMap.get(x).get(y).put(node.getKey(), 0.0);
 				}
 			}
 
 			bestValue += 1;
-			locationNodesMap.get(loc).put(nodeId, bestValue);
-
+			locationNodesMap.get(x).get(y).put(nodeId, bestValue);
+		} else {
+			System.out.println("No node found in location: (" + x + "," + y + ")");
 		}
 
 		return nodeId;
@@ -108,12 +112,13 @@ public class CloudServer {
 					for (String nodeId: removedNodes) {
 						primaryNodes.remove(nodeId);
 					}
+					
 					removedNodes.clear();
 					System.out.println("Online nodes: " + primaryNodes.keySet());
 				}
 				
 				try {
-					Thread.sleep(60 * 1000);
+					Thread.sleep(30 * 1000);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
@@ -147,6 +152,29 @@ public class CloudServer {
 					} else {
 						primaryNodes.put(node.getId(), node);
 					}
+					
+					Location loc = new Location(gridSize, node.getLatitude(), node.getLongitude());
+					int x = loc.getxPosition();
+					int y = loc.getyPosition();
+					
+					HashMap<String, Double> temp;
+					HashMap<Integer, HashMap<String, Double>> temp1;
+					
+					if (locationNodesMap.containsKey(x)) {
+						temp1 = locationNodesMap.get(x);
+						if (locationNodesMap.get(x).containsKey(y)) {
+							temp = locationNodesMap.get(x).get(y);
+						} else {
+							temp = new HashMap<String, Double>();
+						}
+					} else {
+						temp1 = new HashMap<Integer, HashMap<String, Double>>();
+						temp = new HashMap<String, Double>();
+					}
+					temp.put(node.getId(), 0.0);
+					temp1.put(y, temp);
+					
+					locationNodesMap.put(x, temp1);
 					result = (HashMap<String, Node>) primaryNodes.clone();
 				}
 				result.remove(node.getId());
@@ -154,6 +182,14 @@ public class CloudServer {
 			case OFFLINE:
 				synchronized (nodesLock) {
 					primaryNodes.remove(node.getId());
+					Location loc = new Location(gridSize, node.getLatitude(), node.getLongitude());
+					int x = loc.getxPosition();
+					int y = loc.getyPosition();
+					
+					if (locationNodesMap.containsKey(x) && locationNodesMap.get(x).containsKey(y) &&
+							locationNodesMap.get(x).get(y).containsKey(node.getId())) {
+						locationNodesMap.get(x).get(y).remove(node.getId());
+					}
 				}
 				result = (HashMap<String, Node>) primaryNodes.clone();
 				break;
@@ -196,11 +232,11 @@ public class CloudServer {
 				MobileRequest mobileRequest = gson.fromJson(input, MobileRequest.class);
 								
 				if (nodeRequest != null && nodeRequest.getNode() != null) {
-					System.out.println(nodeRequest + ", " + nodeRequest.getNode() + ", " + nodeRequest.getType());
 					HashMap<String, Node> nodes = handleNodeRequest(nodeRequest);
 					out.println(gson.toJson(nodes));
 				} else if (mobileRequest != null) {
-					System.out.println(mobileRequest + ", " + mobileRequest.getUserId());
+					System.out.println("MR: " + mobileRequest.getUserId() + ", " + mobileRequest.getUserIp() + ", "
+							+ mobileRequest.getLatitude() + ", " + mobileRequest.getLongitude());
 					response = handleMobileRequest(mobileRequest);
 					out.println(gson.toJson(response));
 				} else {
