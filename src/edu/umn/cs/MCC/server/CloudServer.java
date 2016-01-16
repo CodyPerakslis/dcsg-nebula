@@ -129,6 +129,7 @@ public class CloudServer {
 			clientSock = sock;
 		}
 
+		@SuppressWarnings("unchecked")
 		private HashMap<String, Node> handleNodeRequest(NodeRequest request) {
 			Node node = request.getNode();
 			HashMap<String, Node> result = null;
@@ -140,24 +141,21 @@ public class CloudServer {
 			
 			switch (request.getType()) {
 			case ONLINE:
-				System.out.println("Online: " + node.getId());
 				synchronized (nodesLock) {
 					if (primaryNodes.containsKey(node.getId())) {
 						primaryNodes.get(node.getId()).updateLastOnline();
 					} else {
 						primaryNodes.put(node.getId(), node);
 					}
-					result = primaryNodes;
+					result = (HashMap<String, Node>) primaryNodes.clone();
 				}
 				result.remove(node.getId());
 				break;
 			case OFFLINE:
-				System.out.println("Offline: " + node.getId());
 				synchronized (nodesLock) {
 					primaryNodes.remove(node.getId());
-					result = primaryNodes;
 				}
-				result.remove(node.getId());
+				result = (HashMap<String, Node>) primaryNodes.clone();
 				break;
 			default:
 				System.out.println("Invalid node request type: " + request.getType());
@@ -171,7 +169,7 @@ public class CloudServer {
 			switch (request.getType()) {
 			case LOCATION:
 				Node mobileUser = new Node(request.getUserId(), 
-						clientSock.getRemoteSocketAddress().toString(), 
+						request.getUserIp(), 
 						request.getLatitude(), request.getLongitude(), NodeType.MOBILE);
 				String node = getNode(mobileUser);
 				status = node;
@@ -189,22 +187,21 @@ public class CloudServer {
 			String response = "failed";
 			Gson gson = new Gson();
 
-			System.out.print("Received a request of type: ");
 			try {
 				in = new BufferedReader(new InputStreamReader (clientSock.getInputStream()));
 				out = new PrintWriter(clientSock.getOutputStream(), true);
 
 				String input = in.readLine();
 				NodeRequest nodeRequest = gson.fromJson(input, NodeRequest.class);
-				MobileRequest mobilRequest = gson.fromJson(input, MobileRequest.class);
-
-				if (nodeRequest != null) {
-					System.out.println("nodeRequest.");
+				MobileRequest mobileRequest = gson.fromJson(input, MobileRequest.class);
+								
+				if (nodeRequest != null && nodeRequest.getNode() != null) {
+					System.out.println(nodeRequest + ", " + nodeRequest.getNode() + ", " + nodeRequest.getType());
 					HashMap<String, Node> nodes = handleNodeRequest(nodeRequest);
 					out.println(gson.toJson(nodes));
-				} else if (mobilRequest != null) {
-					System.out.println("mobilRequest.");
-					response = handleMobileRequest(mobilRequest);
+				} else if (mobileRequest != null) {
+					System.out.println(mobileRequest + ", " + mobileRequest.getUserId());
+					response = handleMobileRequest(mobileRequest);
 					out.println(gson.toJson(response));
 				} else {
 					System.out.println("Invalid request.");

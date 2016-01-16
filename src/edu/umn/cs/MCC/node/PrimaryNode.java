@@ -152,7 +152,7 @@ public class PrimaryNode {
         	serverIp = key.getUrl();
         	peerSocket = new Socket(serverIp, port);
         	
-        	in = new BufferedReader(new InputStreamReader (peerSocket.getInputStream()));
+        	in = new BufferedReader(new InputStreamReader(peerSocket.getInputStream()));
 			out = new BufferedWriter(new OutputStreamWriter(peerSocket.getOutputStream()));
 			
 			out.write(gson.toJson(request));

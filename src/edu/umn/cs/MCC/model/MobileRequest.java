@@ -6,6 +6,7 @@ import java.util.Set;
 public class MobileRequest {
 	private MobileRequestType type;
 	private String userId;
+	private String userIp;
 	private double latitude;
 	private double longitude;
 	private Set<ArticleKey> keys;
@@ -14,6 +15,12 @@ public class MobileRequest {
 	public MobileRequest(MobileRequestType type, String userId) {
 		this.type = type;
 		this.userId = userId;
+	}
+	
+	public MobileRequest(MobileRequestType type, String userId, String userIp) {
+		this.type = type;
+		this.userId = userId;
+		this.userIp = userIp;
 	}
 	
 	public MobileRequestType getType() {
@@ -32,6 +39,14 @@ public class MobileRequest {
 		this.userId = userId;
 	}
 
+	public String getUserIp() {
+		return userIp;
+	}
+
+	public void setUserIp(String userIp) {
+		this.userIp = userIp;
+	}
+	
 	public double getLatitude() {
 		return latitude;
 	}
