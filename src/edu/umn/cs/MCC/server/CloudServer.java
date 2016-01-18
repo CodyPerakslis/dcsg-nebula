@@ -27,7 +27,7 @@ public class CloudServer {
 	private static final int port = 6420;
 	private static final int poolSize = 100;
 	private static final int gridSize = 10;
-	private static final long maxInactive = 5 * 60 * 1000;
+	private static final long maxInactive = 20000;
 
 	private static Object nodesLock = new Object();
 	private static HashMap<String, Node> primaryNodes = new HashMap<String, Node>();
@@ -103,6 +103,7 @@ public class CloudServer {
 		@Override
 		public void run() {
 			while (true) {
+				now = new Date();
 				synchronized (nodesLock) {
 					for (String nodeId: primaryNodes.keySet()) {
 						if (now.getTime() - primaryNodes.get(nodeId).getLastOnline().getTime() > maxInactive) {
@@ -112,13 +113,12 @@ public class CloudServer {
 					for (String nodeId: removedNodes) {
 						primaryNodes.remove(nodeId);
 					}
-					
 					removedNodes.clear();
 					System.out.println("Online nodes: " + primaryNodes.keySet());
 				}
 				
 				try {
-					Thread.sleep(30 * 1000);
+					Thread.sleep(10000);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
@@ -132,6 +132,52 @@ public class CloudServer {
 
 		public RequestThread(Socket sock) {
 			clientSock = sock;
+		}
+		
+		@Override
+		public void run() {
+			BufferedReader in = null;
+			PrintWriter out = null;
+			String response = "failed";
+			Gson gson = new Gson();
+
+			try {
+				in = new BufferedReader(new InputStreamReader (clientSock.getInputStream()));
+				out = new PrintWriter(clientSock.getOutputStream(), true);
+
+				String input = in.readLine();
+				if (input.equalsIgnoreCase("Nodes")) {
+					out.println(gson.toJson(primaryNodes));
+					out.flush();
+					return;
+				}
+				
+				NodeRequest nodeRequest = gson.fromJson(input, NodeRequest.class);
+				MobileRequest mobileRequest = gson.fromJson(input, MobileRequest.class);
+								
+				if (nodeRequest != null && nodeRequest.getNode() != null) {
+					HashMap<String, Node> nodes = handleNodeRequest(nodeRequest);
+					out.println(gson.toJson(nodes));
+				} else if (mobileRequest != null) {
+					System.out.println("MR: " + mobileRequest.getUserId() + ", " + mobileRequest.getUserIp() + ", "
+							+ mobileRequest.getLatitude() + ", " + mobileRequest.getLongitude());
+					response = handleMobileRequest(mobileRequest);
+					out.println(gson.toJson(response));
+				} else {
+					out.println(gson.toJson(primaryNodes));
+				}
+				out.flush();
+			} catch (IOException e) {
+				System.err.println("Error: " + e);
+			} finally {
+				try {
+					if (in != null) in.close();
+					if (out != null) out.close();
+					if (clientSock != null) clientSock.close();
+				} catch (IOException e) {
+					System.out.println("Failed to close streams or socket: " + e);
+				}
+			}
 		}
 
 		@SuppressWarnings("unchecked")
@@ -214,47 +260,6 @@ public class CloudServer {
 				System.out.println("Undefined request type: " + request.getType());
 			}
 			return status;
-		}
-
-		@Override
-		public void run() {
-			BufferedReader in = null;
-			PrintWriter out = null;
-			String response = "failed";
-			Gson gson = new Gson();
-
-			try {
-				in = new BufferedReader(new InputStreamReader (clientSock.getInputStream()));
-				out = new PrintWriter(clientSock.getOutputStream(), true);
-
-				String input = in.readLine();
-				NodeRequest nodeRequest = gson.fromJson(input, NodeRequest.class);
-				MobileRequest mobileRequest = gson.fromJson(input, MobileRequest.class);
-								
-				if (nodeRequest != null && nodeRequest.getNode() != null) {
-					HashMap<String, Node> nodes = handleNodeRequest(nodeRequest);
-					out.println(gson.toJson(nodes));
-				} else if (mobileRequest != null) {
-					System.out.println("MR: " + mobileRequest.getUserId() + ", " + mobileRequest.getUserIp() + ", "
-							+ mobileRequest.getLatitude() + ", " + mobileRequest.getLongitude());
-					response = handleMobileRequest(mobileRequest);
-					out.println(gson.toJson(response));
-				} else {
-					System.out.println("Invalid request.");
-					out.println(gson.toJson(response));
-				}
-				out.flush();
-			} catch (IOException e) {
-				System.err.println("Error: " + e);
-			} finally {
-				try {
-					if (in != null) in.close();
-					if (out != null) out.close();
-					if (clientSock != null) clientSock.close();
-				} catch (IOException e) {
-					System.out.println("Failed to close streams or socket: " + e);
-				}
-			}
 		}
 	}
 }

@@ -41,6 +41,7 @@ public class CNNFetcher implements ResourceFetcher {
     	String result = "";
     	
         try {
+        	// connect to the CNN server origin to get the content of the key
         	URL url = new URL(key.getUrl());
             URLConnection conn = url.openConnection();
             BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
@@ -51,20 +52,17 @@ public class CNNFetcher implements ResourceFetcher {
             while ((inputLine = in.readLine()) != null) {
             	content += inputLine;
             }
-            
+            // parse the content, we only care about the body of the content
             Document doc = Jsoup.parse(content);
 			Elements paragraphs = doc.select("p.zn-body__paragraph");
 			
+			// the article does not have any paragraph
 			if (paragraphs == null || paragraphs.isEmpty()) {
 				return null;
 			}
 			
 			for (Element p: paragraphs) {
 				result += p.text();
-			}
-			
-			if (result == null || result.isEmpty()) {
-				return null;
 			}
 			in.close();
 		} catch (IOException e) {
@@ -75,8 +73,7 @@ public class CNNFetcher implements ResourceFetcher {
     }
     
     /**
-     * Get a list of available Article keys
-     * 
+     * Get a set of available Article keys
      * @return
      */
     public Set<ArticleKey> getAvailableResources() {
@@ -89,7 +86,7 @@ public class CNNFetcher implements ResourceFetcher {
     }
 	
 	/**
-	 * Get a list of ArticleKey from the RSS url.
+	 * Get a list of ArticleKey from the RSS URL.
 	 * 
 	 * @param urlAddress
 	 * @return
