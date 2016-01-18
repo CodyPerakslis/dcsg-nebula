@@ -8,8 +8,10 @@ import java.net.HttpURLConnection;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -18,6 +20,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import edu.umn.cs.MCC.model.ArticleKey;
+import edu.umn.cs.MCC.model.ArticleTopic;
 import edu.umn.cs.MCC.model.LRUCache;
 import edu.umn.cs.MCC.model.MobileRequest;
 import edu.umn.cs.MCC.model.MobileRequestType;
@@ -36,10 +39,11 @@ public class PrimaryNode {
 	private static String cloudServer = "http://localhost:8080/MCCInterface/WebInterface";
 
 	private static long lastUpdate = 0;
-	private static Set<ArticleKey> resourceKeys = new HashSet<ArticleKey>();
+	private static HashMap<ArticleTopic, Set<ArticleKey>> resourceKeys = new HashMap<ArticleTopic, Set<ArticleKey>>();
 	private static Object resourceKeysLock = new Object();
-	private static int maxCachedArticles = 200;
-	private static LRUCache articleContentMap = new LRUCache(maxCachedArticles);
+	private static final int maxCachedArticlesPerTopic = 100;
+	private static final int cacheSize = maxCachedArticlesPerTopic * 5;
+	private static LRUCache articleContentMap = new LRUCache(cacheSize);
 
 	private static CNNFetcher resourceFetcher = new CNNFetcher();
 
@@ -110,19 +114,23 @@ public class PrimaryNode {
 	 */
 	private static void survey() {
 		synchronized (resourceKeysLock) {
-			Set<ArticleKey> newResources = resourceFetcher.getAvailableResources();
+			HashMap<ArticleTopic, Set<ArticleKey>> newResources = resourceFetcher.getAvailableResources();
 			
 			if (newResources == null) {
 				System.out.println("Resources unavailable.");
 				return;
 			}
 			
-			resourceKeys.addAll(newResources);
-			if (resourceKeys.size() > maxCachedArticles) {
-				resourceKeys.clear();
-				resourceKeys.addAll(newResources);
+			for (ArticleTopic topic: newResources.keySet()) {
+				if (!resourceKeys.containsKey(topic)) {
+					resourceKeys.put(topic, new HashSet<ArticleKey>());
+				}
+				resourceKeys.get(topic).addAll(newResources.get(topic));
+				if (resourceKeys.get(topic).size() > maxCachedArticlesPerTopic) {
+					resourceKeys.clear();
+					resourceKeys.get(topic).addAll(newResources.get(topic));
+				}
 			}
-			System.out.println("Number of available resources: " + resourceKeys.size());
 			lastUpdate = System.currentTimeMillis() / 1000;
 		}
 	}
@@ -192,7 +200,7 @@ public class PrimaryNode {
 				}
 				
 				synchronized (resourceKeysLock) {
-					Set<ArticleKey> newResources = resourceFetcher.getAvailableResources();
+					HashMap<ArticleTopic, Set<ArticleKey>> newResources = resourceFetcher.getAvailableResources();
 					
 					if (newResources == null) {
 						System.out.println("Resources unavailable.");
@@ -200,12 +208,16 @@ public class PrimaryNode {
 					}
 					
 					System.out.println("Updating resources...");
-					resourceKeys.addAll(newResources);
-					if (resourceKeys.size() > maxCachedArticles) {
-						resourceKeys.clear();
-						resourceKeys.addAll(newResources);
+					for (ArticleTopic topic: newResources.keySet()) {
+						if (!resourceKeys.containsKey(topic)) {
+							resourceKeys.put(topic, new HashSet<ArticleKey>());
+						}
+						resourceKeys.get(topic).addAll(newResources.get(topic));
+						if (resourceKeys.get(topic).size() > maxCachedArticlesPerTopic) {
+							resourceKeys.clear();
+							resourceKeys.get(topic).addAll(newResources.get(topic));
+						}
 					}
-					System.out.println("Number of available resources: " + resourceKeys.size());
 					lastUpdate = currentTime;
 				}
 				try {
@@ -310,16 +322,25 @@ public class PrimaryNode {
 							content = resourceFetcher.fetchFromOrigin(key);
 							contents.put(key.getTitle(), content);
 							articleContentMap.put(key, content);
-							resourceKeys.add(key);
+							resourceKeys.get(key.getTopic()).add(key);
 						}
 					}
 					out.println(gson.toJson(contents));
 					break;
-				case FETCHN:	
-					int n = request.getKeys().size();
+				case FETCHN:
+					List<ArticleKey> keys = new ArrayList<ArticleKey>(request.getKeys());
+					ArticleTopic topic = keys.get(0).getTopic();
+					int n = keys.size();
 					int i = 0;
-
-					for (ArticleKey key: resourceKeys) {
+					
+					if (topic == null || !resourceKeys.containsKey(topic)) {
+						System.out.println("Invalid input. Topic: " + topic);
+						contents.put("ERROR", "Invalid input. Topic: " + topic);
+						out.println(gson.toJson(contents));
+						break;
+					}
+					
+					for (ArticleKey key: resourceKeys.get(topic)) {
 						if (i >= n)
 							break;
 
@@ -330,7 +351,7 @@ public class PrimaryNode {
 							content = resourceFetcher.fetchFromOrigin(key);
 							contents.put(key.getTitle(), content);
 							articleContentMap.put(key, content);
-							resourceKeys.add(key);
+							resourceKeys.get(key.getTopic()).add(key);
 						}
 						i++;
 					}
@@ -345,7 +366,7 @@ public class PrimaryNode {
 						if (content == null)
 							continue;
 						articleContentMap.put(resourceKey, content);
-						resourceKeys.add(resourceKey);
+						resourceKeys.get(resourceKey.getTopic()).add(resourceKey);
 					}
 					// reply with a set of article keys whose contents are cached
 					out.println(gson.toJson(articleContentMap.keySet()));
@@ -359,7 +380,7 @@ public class PrimaryNode {
 						if (content == null)
 							continue;
 						articleContentMap.put(resourceKey, content);
-						resourceKeys.add(resourceKey);
+						resourceKeys.get(resourceKey.getTopic()).add(resourceKey);
 					}
 					// reply with a set of article keys whose contents are cached
 					out.println(gson.toJson(articleContentMap.keySet()));

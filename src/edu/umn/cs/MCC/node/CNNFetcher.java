@@ -5,9 +5,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 import org.jsoup.Jsoup;
@@ -22,14 +21,16 @@ import edu.umn.cs.MCC.model.ArticleTopic;
  * @author albert
  */
 public class CNNFetcher implements ResourceFetcher {
+	private HashMap<ArticleTopic, String> rssUrls;
 	
-	private String[] rssUrls = {
-			"http://rss.cnn.com/rss/cnn_topstories.rss", 
-			"http://rss.cnn.com/rss/cnn_world.rss", 
-			"http://rss.cnn.com/rss/cnn_us.rss", 
-			"http://rss.cnn.com/rss/cnn_allpolitics.rss", 
-			"http://rss.cnn.com/rss/cnn_tech.rss", 
-			"http://rss.cnn.com/rss/cnn_showbiz.rss"};
+	public CNNFetcher() {
+		rssUrls = new HashMap<ArticleTopic, String>();
+		rssUrls.put(ArticleTopic.POLITICS, "http://rss.cnn.com/rss/cnn_allpolitics.rss");
+		rssUrls.put(ArticleTopic.BUSINESS, "http://rss.cnn.com/rss/money_latest.rss");
+		rssUrls.put(ArticleTopic.TECHNOLOGY, "http://rss.cnn.com/rss/cnn_tech.rss");
+		rssUrls.put(ArticleTopic.ENTERTAINMENT, "http://rss.cnn.com/rss/cnn_showbiz.rss");
+		rssUrls.put(ArticleTopic.HEALTH, "http://rss.cnn.com/rss/cnn_health.rss");
+	}
 	
 	/**
 	 * Get the content associated with the provided key.
@@ -76,13 +77,13 @@ public class CNNFetcher implements ResourceFetcher {
      * Get a set of available Article keys
      * @return
      */
-    public Set<ArticleKey> getAvailableResources() {
-    	Set<ArticleKey> articleKeys = new HashSet<ArticleKey>();
+    public HashMap<ArticleTopic, Set<ArticleKey>> getAvailableResources() {
+    	HashMap<ArticleTopic, Set<ArticleKey>> result = new HashMap<ArticleTopic, Set<ArticleKey>>();
     	
-    	for (String rssUrl: rssUrls) {
-    		articleKeys.addAll(getArticles(rssUrl));
+    	for (ArticleTopic topic: rssUrls.keySet()) {
+    		result.put(topic, getArticles(rssUrls.get(topic)));
     	}
-        return articleKeys;
+        return result;
     }
 	
 	/**
@@ -91,23 +92,23 @@ public class CNNFetcher implements ResourceFetcher {
 	 * @param urlAddress
 	 * @return
 	 */
-	public List<ArticleKey> getArticles(String urlAddress) {
+	public Set<ArticleKey> getArticles(String urlAddress) {
 		URL rssUrl;
 		BufferedReader in = null;
 		ArticleTopic topic;
-		List<ArticleKey> result = new ArrayList<ArticleKey>();
+		Set<ArticleKey> result = new HashSet<ArticleKey>();
 		String[] urlPart = urlAddress.split("/");
 		
-		if (urlPart[urlPart.length-1].equalsIgnoreCase("cnn_topstories.rss") ||
-				urlPart[urlPart.length-1].equalsIgnoreCase("cnn_world.rss") ||
-				urlPart[urlPart.length-1].equalsIgnoreCase("cnn_us.rss")) {
-			topic = ArticleTopic.NEWS;
-		} else if (urlPart[urlPart.length-1].equalsIgnoreCase("cnn_allpolitics.rss")) {
+		if (urlPart[urlPart.length-1].equalsIgnoreCase("cnn_allpolitics.rss")) {
 			topic = ArticleTopic.POLITICS;
-		} else if (urlPart[urlPart.length-1].equalsIgnoreCase("cnn_showbiz.rss")) {
-			topic = ArticleTopic.ENTERTAINMENT;
+		} else if (urlPart[urlPart.length-1].equalsIgnoreCase("money_latest.rss")) {
+			topic = ArticleTopic.BUSINESS;
 		} else if (urlPart[urlPart.length-1].equalsIgnoreCase("cnn_tech.rss")) {
 			topic = ArticleTopic.TECHNOLOGY;
+		} else if (urlPart[urlPart.length-1].equalsIgnoreCase("cnn_showbiz.rss")) {
+			topic = ArticleTopic.ENTERTAINMENT;
+		} else if (urlPart[urlPart.length-1].equalsIgnoreCase("cnn_health.rss")) {
+			topic = ArticleTopic.HEALTH;
 		} else {
 			System.out.println("Unable to find the topic from the RSS: " + urlAddress);
 			topic = null;

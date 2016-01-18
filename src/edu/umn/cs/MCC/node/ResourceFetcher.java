@@ -1,8 +1,10 @@
 package edu.umn.cs.MCC.node;
 
+import java.util.HashMap;
 import java.util.Set;
 
 import edu.umn.cs.MCC.model.ArticleKey;
+import edu.umn.cs.MCC.model.ArticleTopic;
 
 public interface ResourceFetcher {
 
@@ -17,7 +19,7 @@ public interface ResourceFetcher {
 	 * Get all available resource keys from the origin without downloading the contents.
 	 * @return
 	 */
-	public Set<ArticleKey> getAvailableResources();
+	public HashMap<ArticleTopic, Set<ArticleKey>> getAvailableResources();
 	
 	
 }

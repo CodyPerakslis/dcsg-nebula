@@ -1,10 +1,9 @@
 package edu.umn.cs.MCC.model;
 
 public enum ArticleTopic {
-    NEWS,
     POLITICS,
-    SPORTS,
+    BUSINESS,
     TECHNOLOGY,
     ENTERTAINMENT,
-    BUSINESS;
+    HEALTH;
 }
