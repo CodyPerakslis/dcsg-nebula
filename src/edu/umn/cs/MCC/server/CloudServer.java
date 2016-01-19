@@ -34,35 +34,46 @@ public class CloudServer {
 	private static HashMap<Integer, HashMap<Integer, HashMap<String, Double>>> locationNodesMap = new HashMap<>();
 	// <x, <y, <id, score>>>
 
+	/**
+	 * Get a primary node for a mobileUser. 
+	 * The implementation of this method may be different depending on the application's needs.
+	 * 
+	 * @param mobileUser
+	 * @return
+	 */
 	public static String getNode(Node mobileUser) {
 		String nodeId = null;
-		Double bestValue = 0.0;
+		Double bestScore = -1.0;
 		Location loc = new Location(gridSize, mobileUser.getLatitude(), mobileUser.getLongitude());
 		int x = loc.getxPosition();
 		int y = loc.getyPosition();
 
-		// get node based on location
+		// get a primary node based on the user's location.
+		// find a node that lies within the same grid location and has the best score.
 		if (locationNodesMap.containsKey(x) && locationNodesMap.get(x).containsKey(y)) {
-			// find the best node
 			for (Entry<String, Double> node: locationNodesMap.get(x).get(y).entrySet()) {
-				if (bestValue <= node.getValue()) {
+				// find a node with the lowest value (best score)
+				if (bestScore < 0 || bestScore > node.getValue()) {
 					nodeId = node.getKey();
-					bestValue = node.getValue();
+					bestScore = node.getValue();
 				}
 			}
 			// update the node's score
 			if (nodeId == null)
 				return null;
 
-			if (bestValue == Double.MAX_VALUE) {
+			if (bestScore == Double.MAX_VALUE) {
+				// this only happens when all of the nodes have the maximum score, just reset the scores back to 0.0
 				for (Entry<String, Double> node: locationNodesMap.get(x).get(y).entrySet()) {
 					locationNodesMap.get(x).get(y).put(node.getKey(), 0.0);
 				}
 			}
 
-			bestValue += 1;
-			locationNodesMap.get(x).get(y).put(nodeId, bestValue);
+			// update the score of the node
+			bestScore += 1;
+			locationNodesMap.get(x).get(y).put(nodeId, bestScore);
 		} else {
+			// TODO find another node on different location?
 			System.out.println("No node found in location: (" + x + "," + y + ")");
 		}
 
@@ -96,7 +107,16 @@ public class CloudServer {
 		}
 	}
 	
+	/**
+	 * This thread will periodically monitor the status of each primary nodes.
+	 * If it does not receive a heartbeat for a predetermined time limit, {@code maxInactive},
+	 * the node will be considered inactive and removed from the list of active nodes.
+	 * 
+	 * @author albert
+	 *
+	 */
 	private static class NodeMonitorThread implements Runnable {
+		private int updateInterval = 10000; // 10 seconds
 		private Date now = new Date();
 		private Set<String> removedNodes = new HashSet<String>();
 
@@ -118,7 +138,7 @@ public class CloudServer {
 				}
 				
 				try {
-					Thread.sleep(10000);
+					Thread.sleep(updateInterval);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
@@ -127,6 +147,12 @@ public class CloudServer {
 		
 	}
 
+	/**
+	 * This thread handles any request from either primary nodes or mobile users.
+	 * 
+	 * @author albert
+	 *
+	 */
 	private static class RequestThread implements Runnable {
 		private final Socket clientSock;
 
@@ -147,6 +173,7 @@ public class CloudServer {
 
 				String input = in.readLine();
 				if (input.equalsIgnoreCase("Nodes")) {
+					// return a list of online primary nodes
 					out.println(gson.toJson(primaryNodes));
 					out.flush();
 					return;
@@ -156,14 +183,15 @@ public class CloudServer {
 				MobileRequest mobileRequest = gson.fromJson(input, MobileRequest.class);
 								
 				if (nodeRequest != null && nodeRequest.getNode() != null) {
+					// handle a primary node's request
 					HashMap<String, Node> nodes = handleNodeRequest(nodeRequest);
 					out.println(gson.toJson(nodes));
 				} else if (mobileRequest != null) {
-					System.out.println("MR: " + mobileRequest.getUserId() + ", " + mobileRequest.getUserIp() + ", "
-							+ mobileRequest.getLatitude() + ", " + mobileRequest.getLongitude());
+					// handle a mobile user's request
 					response = handleMobileRequest(mobileRequest);
 					out.println(gson.toJson(response));
 				} else {
+					// unsupported request, return a list of online primary nodes
 					out.println(gson.toJson(primaryNodes));
 				}
 				out.flush();
@@ -180,10 +208,17 @@ public class CloudServer {
 			}
 		}
 
+		/**
+		 * Handle a request from primary node. The request's type is defined in {@code NodeRequestType.java}
+		 * 
+		 * @param request
+		 * @return
+		 */
 		@SuppressWarnings("unchecked")
 		private HashMap<String, Node> handleNodeRequest(NodeRequest request) {
 			Node node = request.getNode();
 			HashMap<String, Node> result = null;
+			double initScore = 0.0;
 			
 			if (node == null) {
 				System.out.println("Invalid node.");
@@ -192,6 +227,7 @@ public class CloudServer {
 			
 			switch (request.getType()) {
 			case ONLINE:
+				// a request indicating that the node is online/active
 				synchronized (nodesLock) {
 					if (primaryNodes.containsKey(node.getId())) {
 						primaryNodes.get(node.getId()).updateLastOnline();
@@ -199,6 +235,7 @@ public class CloudServer {
 						primaryNodes.put(node.getId(), node);
 					}
 					
+					// get the grid location of the node
 					Location loc = new Location(gridSize, node.getLatitude(), node.getLongitude());
 					int x = loc.getxPosition();
 					int y = loc.getyPosition();
@@ -217,15 +254,17 @@ public class CloudServer {
 						temp1 = new HashMap<Integer, HashMap<String, Double>>();
 						temp = new HashMap<String, Double>();
 					}
-					temp.put(node.getId(), 0.0);
+					// initialize the score of the node 
+					temp.put(node.getId(), initScore);
 					temp1.put(y, temp);
-					
 					locationNodesMap.put(x, temp1);
 					result = (HashMap<String, Node>) primaryNodes.clone();
 				}
+				// give a list of all primary nodes, excluding the node itself
 				result.remove(node.getId());
 				break;
 			case OFFLINE:
+				// a request indicating that the node is going to be offline/inactive
 				synchronized (nodesLock) {
 					primaryNodes.remove(node.getId());
 					Location loc = new Location(gridSize, node.getLatitude(), node.getLongitude());
@@ -245,16 +284,23 @@ public class CloudServer {
 			return result;
 		}
 
+		/**
+		 * Handle a request from mobile application. The request's type is defined in {@code MobileRequestType.java}
+		 * 
+		 * @param request
+		 * @return
+		 */
 		private String handleMobileRequest(MobileRequest request) {
 			String status = "failed";
 			
 			switch (request.getType()) {
 			case LOCATION:
+				// a request for getting a primary node to support the mobile user
 				Node mobileUser = new Node(request.getUserId(), 
 						request.getUserIp(), 
 						request.getLatitude(), request.getLongitude(), NodeType.MOBILE);
-				String node = getNode(mobileUser);
-				status = node;
+				// get a node for the mobile user
+				status = getNode(mobileUser);
 				break;
 			default:
 				System.out.println("Undefined request type: " + request.getType());

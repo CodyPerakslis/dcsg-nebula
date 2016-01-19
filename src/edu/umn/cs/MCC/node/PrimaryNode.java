@@ -307,6 +307,7 @@ public class PrimaryNode {
 				out = new PrintWriter(clientSock.getOutputStream());
 
 				MobileRequest request = gson.fromJson(in.readLine(), new TypeToken<MobileRequest>(){}.getType());
+				System.out.println("Received a Mobile Request: " + request.getType() + ". Processing ...");
 
 				switch (request.getType()) {
 				case LOCATION:
@@ -407,6 +408,7 @@ public class PrimaryNode {
 					System.out.println("Undefined request type: " + request.getType());
 					break;
 				}
+				System.out.println("[OK]");
 				out.flush();
 			} catch (IOException e) {
 				System.err.println("Error: " + e);
