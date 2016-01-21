@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.node;
+package edu.umn.cs.MCC.fetcher;
 
 import java.io.BufferedReader;
 import java.io.IOException;

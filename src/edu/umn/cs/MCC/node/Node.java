@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.model;
+package edu.umn.cs.MCC.node;
 
 import java.io.Serializable;
 import java.util.Date;

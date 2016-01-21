@@ -17,14 +17,14 @@ import java.util.concurrent.Executors;
 import com.google.gson.Gson;
 
 import edu.umn.cs.MCC.model.Location;
-import edu.umn.cs.MCC.model.MobileRequest;
-import edu.umn.cs.MCC.model.Node;
-import edu.umn.cs.MCC.model.NodeRequest;
-import edu.umn.cs.MCC.model.NodeType;
+import edu.umn.cs.MCC.node.Node;
+import edu.umn.cs.MCC.node.NodeType;
+import edu.umn.cs.MCC.request.MobileRequest;
+import edu.umn.cs.MCC.request.NodeRequest;
 
 public class CloudServer {
 
-	private static final int port = 6420;
+	private static final int port = 6421;
 	private static final int poolSize = 100;
 	private static final int gridSize = 10;
 	private static final long maxInactive = 20000;
@@ -73,18 +73,99 @@ public class CloudServer {
 			bestScore += 1;
 			locationNodesMap.get(x).get(y).put(nodeId, bestScore);
 		} else {
-			// TODO find another node on different location?
-			System.out.println("No node found in location: (" + x + "," + y + ")");
+			// there is no node found in the same location as the user, find a node from the other locations
+			// starting with the neighboring location.
+			int i = 1;
+			do {
+				if (x-i >= 0) {
+					// (x-i, y-i)
+					if (y-i >= 0) {
+						for (Entry<String, Double> node: locationNodesMap.get(x-i).get(y-i).entrySet()) {
+							if (bestScore < 0 || bestScore > node.getValue()+i) {
+								nodeId = node.getKey();
+								bestScore = node.getValue() + i;
+							}
+						}
+					}
+					// (x-i, y)
+					for (Entry<String, Double> node: locationNodesMap.get(x-i).get(y).entrySet()) {
+						if (bestScore < 0 || bestScore > node.getValue()+i) {
+							nodeId = node.getKey();
+							bestScore = node.getValue() + i;
+						}
+					}
+					// (x-i, y+i)
+					if (y+i < gridSize) {
+						for (Entry<String, Double> node: locationNodesMap.get(x-i).get(y+i).entrySet()) {
+							if (bestScore < 0 || bestScore > node.getValue()+i) {
+								nodeId = node.getKey();
+								bestScore = node.getValue() + i;
+							}
+						}
+					}
+				}
+
+				// (x, y-i)
+				if (y-i >= 0) {
+					for (Entry<String, Double> node: locationNodesMap.get(x).get(y-i).entrySet()) {
+						if (bestScore < 0 || bestScore > node.getValue()+i) {
+							nodeId = node.getKey();
+							bestScore = node.getValue() + i;
+						}
+					}
+				}
+				// (x, y+i)
+				if (y+i < gridSize) {
+					for (Entry<String, Double> node: locationNodesMap.get(x).get(y+i).entrySet()) {
+						if (bestScore < 0 || bestScore > node.getValue()+i) {
+							nodeId = node.getKey();
+							bestScore = node.getValue() + i;
+						}
+					}
+				}
+
+				if (x+i < gridSize) {
+					// (x+i, y-i)
+					if (y-i >= 0) {
+						for (Entry<String, Double> node: locationNodesMap.get(x+i).get(y-i).entrySet()) {
+							if (bestScore < 0 || bestScore > node.getValue()+i) {
+								nodeId = node.getKey();
+								bestScore = node.getValue() + i;
+							}
+						}
+					}
+					// (x+i, y)
+					for (Entry<String, Double> node: locationNodesMap.get(x+i).get(y).entrySet()) {
+						if (bestScore < 0 || bestScore > node.getValue()+i) {
+							nodeId = node.getKey();
+							bestScore = node.getValue() + i;
+						}
+					}
+					// (x+i, y+i)
+					if (y+i < gridSize) {
+						for (Entry<String, Double> node: locationNodesMap.get(x+i).get(y+i).entrySet()) {
+							if (bestScore < 0 || bestScore > node.getValue()+i) {
+								nodeId = node.getKey();
+								bestScore = node.getValue() + i;
+							}
+						}
+					}
+				}
+				i++;
+			} while (i < gridSize && nodeId != null); // terminate when a node is found in the neighboring grid cell
+		}
+		if (nodeId == null) {
+			System.out.println("No online node found in all location.");
 		}
 
 		return nodeId;
 	}
-
+	
 	public static void main(String[] args) {
 		// Listening for client requests
 		Thread nodeMonitorThread = new Thread(new NodeMonitorThread());
 		nodeMonitorThread.start();
-		
+
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
 		try {
@@ -106,7 +187,7 @@ public class CloudServer {
 			}
 		}
 	}
-	
+
 	/**
 	 * This thread will periodically monitor the status of each primary nodes.
 	 * If it does not receive a heartbeat for a predetermined time limit, {@code maxInactive},
@@ -136,7 +217,7 @@ public class CloudServer {
 					removedNodes.clear();
 					System.out.println("Online nodes: " + primaryNodes.keySet());
 				}
-				
+
 				try {
 					Thread.sleep(updateInterval);
 				} catch (InterruptedException e) {
@@ -144,7 +225,7 @@ public class CloudServer {
 				}
 			}
 		}
-		
+
 	}
 
 	/**
@@ -159,7 +240,7 @@ public class CloudServer {
 		public RequestThread(Socket sock) {
 			clientSock = sock;
 		}
-		
+
 		@Override
 		public void run() {
 			BufferedReader in = null;
@@ -178,10 +259,10 @@ public class CloudServer {
 					out.flush();
 					return;
 				}
-				
+
 				NodeRequest nodeRequest = gson.fromJson(input, NodeRequest.class);
 				MobileRequest mobileRequest = gson.fromJson(input, MobileRequest.class);
-								
+
 				if (nodeRequest != null && nodeRequest.getNode() != null) {
 					// handle a primary node's request
 					HashMap<String, Node> nodes = handleNodeRequest(nodeRequest);
@@ -219,12 +300,12 @@ public class CloudServer {
 			Node node = request.getNode();
 			HashMap<String, Node> result = null;
 			double initScore = 0.0;
-			
+
 			if (node == null) {
 				System.out.println("Invalid node.");
 				return null;
 			}
-			
+
 			switch (request.getType()) {
 			case ONLINE:
 				// a request indicating that the node is online/active
@@ -234,15 +315,15 @@ public class CloudServer {
 					} else {
 						primaryNodes.put(node.getId(), node);
 					}
-					
+
 					// get the grid location of the node
 					Location loc = new Location(gridSize, node.getLatitude(), node.getLongitude());
 					int x = loc.getxPosition();
 					int y = loc.getyPosition();
-					
+
 					HashMap<String, Double> temp;
 					HashMap<Integer, HashMap<String, Double>> temp1;
-					
+
 					if (locationNodesMap.containsKey(x)) {
 						temp1 = locationNodesMap.get(x);
 						if (locationNodesMap.get(x).containsKey(y)) {
@@ -270,7 +351,7 @@ public class CloudServer {
 					Location loc = new Location(gridSize, node.getLatitude(), node.getLongitude());
 					int x = loc.getxPosition();
 					int y = loc.getyPosition();
-					
+
 					if (locationNodesMap.containsKey(x) && locationNodesMap.get(x).containsKey(y) &&
 							locationNodesMap.get(x).get(y).containsKey(node.getId())) {
 						locationNodesMap.get(x).get(y).remove(node.getId());
@@ -292,7 +373,7 @@ public class CloudServer {
 		 */
 		private String handleMobileRequest(MobileRequest request) {
 			String status = "failed";
-			
+
 			switch (request.getType()) {
 			case LOCATION:
 				// a request for getting a primary node to support the mobile user

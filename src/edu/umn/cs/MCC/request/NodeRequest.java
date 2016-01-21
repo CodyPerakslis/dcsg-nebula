@@ -1,4 +1,6 @@
-package edu.umn.cs.MCC.model;
+package edu.umn.cs.MCC.request;
+
+import edu.umn.cs.MCC.node.Node;
 
 public class NodeRequest {
 	private Node node;

@@ -19,13 +19,12 @@ import java.util.concurrent.Executors;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import edu.umn.cs.MCC.cache.LRUCache;
+import edu.umn.cs.MCC.fetcher.CNNFetcher;
 import edu.umn.cs.MCC.model.ArticleKey;
 import edu.umn.cs.MCC.model.ArticleTopic;
-import edu.umn.cs.MCC.model.LRUCache;
-import edu.umn.cs.MCC.model.MobileRequest;
-import edu.umn.cs.MCC.model.MobileRequestType;
-import edu.umn.cs.MCC.model.Node;
-import edu.umn.cs.MCC.model.NodeType;
+import edu.umn.cs.MCC.request.MobileRequest;
+import edu.umn.cs.MCC.request.MobileRequestType;
 
 public class PrimaryNode {
 
@@ -39,10 +38,10 @@ public class PrimaryNode {
 	private static String cloudServer = "http://localhost:8080/MCCInterface/WebInterface";
 
 	private static long lastUpdate = 0;
-	private static HashMap<ArticleTopic, Set<ArticleKey>> resourceKeys = new HashMap<ArticleTopic, Set<ArticleKey>>();
+	private static final int maxArticlesPerTopic = 20;
+	private static HashMap<ArticleTopic, Set<ArticleKey>> newArticles = new HashMap<ArticleTopic, Set<ArticleKey>>();
 	private static Object resourceKeysLock = new Object();
-	private static final int maxCachedArticlesPerTopic = 100;
-	private static final int cacheSize = maxCachedArticlesPerTopic * 5;
+	private static final int cacheSize = 100;
 	private static LRUCache articleContentMap = new LRUCache(cacheSize);
 
 	private static CNNFetcher resourceFetcher = new CNNFetcher();
@@ -117,18 +116,18 @@ public class PrimaryNode {
 			HashMap<ArticleTopic, Set<ArticleKey>> newResources = resourceFetcher.getAvailableResources();
 			
 			if (newResources == null) {
-				System.out.println("Resources unavailable.");
+				System.out.println("No new articles found.");
 				return;
 			}
 			
 			for (ArticleTopic topic: newResources.keySet()) {
-				if (!resourceKeys.containsKey(topic)) {
-					resourceKeys.put(topic, new HashSet<ArticleKey>());
+				if (!newArticles.containsKey(topic)) {
+					newArticles.put(topic, new HashSet<ArticleKey>());
 				}
-				resourceKeys.get(topic).addAll(newResources.get(topic));
-				if (resourceKeys.get(topic).size() > maxCachedArticlesPerTopic) {
-					resourceKeys.clear();
-					resourceKeys.get(topic).addAll(newResources.get(topic));
+				newArticles.get(topic).addAll(newResources.get(topic));
+				if (newArticles.get(topic).size() > maxArticlesPerTopic) {
+					newArticles.get(topic).clear();
+					newArticles.get(topic).addAll(newResources.get(topic));
 				}
 			}
 			lastUpdate = System.currentTimeMillis() / 1000;
@@ -199,27 +198,7 @@ public class PrimaryNode {
 					return;
 				}
 				
-				synchronized (resourceKeysLock) {
-					HashMap<ArticleTopic, Set<ArticleKey>> newResources = resourceFetcher.getAvailableResources();
-					
-					if (newResources == null) {
-						System.out.println("Resources unavailable.");
-						return;
-					}
-					
-					System.out.println("Updating resources...");
-					for (ArticleTopic topic: newResources.keySet()) {
-						if (!resourceKeys.containsKey(topic)) {
-							resourceKeys.put(topic, new HashSet<ArticleKey>());
-						}
-						resourceKeys.get(topic).addAll(newResources.get(topic));
-						if (resourceKeys.get(topic).size() > maxCachedArticlesPerTopic) {
-							resourceKeys.clear();
-							resourceKeys.get(topic).addAll(newResources.get(topic));
-						}
-					}
-					lastUpdate = currentTime;
-				}
+				survey();
 				try {
 					Thread.sleep(updateInterval);
 				} catch (InterruptedException e) {
@@ -298,7 +277,6 @@ public class PrimaryNode {
 			BufferedReader in = null;
 			PrintWriter out = null;
 			Gson gson = new Gson();
-			Set<ArticleKey> resources = null;
 			HashMap<String, String> contents = new HashMap<String, String>();
 			String content = null;
 
@@ -307,12 +285,44 @@ public class PrimaryNode {
 				out = new PrintWriter(clientSock.getOutputStream());
 
 				MobileRequest request = gson.fromJson(in.readLine(), new TypeToken<MobileRequest>(){}.getType());
-				System.out.println("Received a Mobile Request: " + request.getType() + ". Processing ...");
+				System.out.print("Received a Mobile Request: " + request.getType() + ". Processing ...");
 
 				switch (request.getType()) {
 				case LOCATION:
 					boolean success = updateLocation(request);
 					out.println(gson.toJson(success));
+					break;
+				case SURVEY:
+					survey();
+					out.println(gson.toJson(articleContentMap.keySet()));
+					break;
+				case CACHE:					
+					for (ArticleKey key: request.getKeys()) {
+						if (articleContentMap.containsKey(key)) {
+							continue;
+						}
+						// the article is not cached, fetch it from the origin and cache it
+						content = resourceFetcher.fetchFromOrigin(key);
+						contents.put(key.getTitle(), content);
+						articleContentMap.put(key, content);
+
+					}
+					// reply with a set of article keys whose contents are cached
+					out.println(gson.toJson(articleContentMap.keySet()));
+					break;
+				case CACHEPEER:
+					// cache the contents from one of the peer nodes
+					for (ArticleKey key: request.getKeys()) {
+						if (articleContentMap.containsKey(key)) {
+							continue;
+						}
+						content = fetchFromPeer(key);
+						if (content == null)
+							continue;
+						articleContentMap.put(key, content);
+					}
+					// reply with a set of article keys whose contents are cached
+					out.println(gson.toJson(articleContentMap.keySet()));
 					break;
 				case FETCH:
 					for (ArticleKey key: request.getKeys()) {
@@ -323,25 +333,24 @@ public class PrimaryNode {
 							content = resourceFetcher.fetchFromOrigin(key);
 							contents.put(key.getTitle(), content);
 							articleContentMap.put(key, content);
-							resourceKeys.get(key.getTopic()).add(key);
 						}
 					}
 					out.println(gson.toJson(contents));
 					break;
-				case FETCHN:
+				case FETCHTOPIC:
 					List<ArticleKey> keys = new ArrayList<ArticleKey>(request.getKeys());
-					ArticleTopic topic = keys.get(0).getTopic();
 					int n = keys.size();
+					ArticleTopic topic = null;
 					int i = 0;
 					
-					if (topic == null || !resourceKeys.containsKey(topic)) {
+					if (n < 1 || (topic = keys.get(0).getTopic()) == null) {
 						System.out.println("Invalid input. Topic: " + topic);
 						contents.put("ERROR", "Invalid input. Topic: " + topic);
 						out.println(gson.toJson(contents));
 						break;
 					}
-					
-					for (ArticleKey key: resourceKeys.get(topic)) {
+
+					for (ArticleKey key: newArticles.get(topic)) {
 						if (i >= n)
 							break;
 
@@ -352,51 +361,16 @@ public class PrimaryNode {
 							content = resourceFetcher.fetchFromOrigin(key);
 							contents.put(key.getTitle(), content);
 							articleContentMap.put(key, content);
-							resourceKeys.get(key.getTopic()).add(key);
 						}
 						i++;
 					}
 					out.println(gson.toJson(contents));
 					break;
-				case CACHE:
-					resources = request.getKeys();
-
-					// cache the contents of each key in the cache
-					for (ArticleKey resourceKey: resources) {
-						content = resourceFetcher.fetchFromOrigin(resourceKey);
-						if (content == null)
-							continue;
-						articleContentMap.put(resourceKey, content);
-						resourceKeys.get(resourceKey.getTopic()).add(resourceKey);
-					}
-					// reply with a set of article keys whose contents are cached
-					out.println(gson.toJson(articleContentMap.keySet()));
-					break;
-				case CACHEPEER:
-					resources = request.getKeys();
-
-					// cache the contents from one of the peer nodes
-					for (ArticleKey resourceKey: resources) {
-						content = fetchFromPeer(resourceKey);
-						if (content == null)
-							continue;
-						articleContentMap.put(resourceKey, content);
-						resourceKeys.get(resourceKey.getTopic()).add(resourceKey);
-					}
-					// reply with a set of article keys whose contents are cached
-					out.println(gson.toJson(articleContentMap.keySet()));
-					break;
-				case SURVEY:
-					survey();
-					out.println(gson.toJson(resourceKeys));
-					break;
 				case GET:
 					// this request is a download request from a peer. 
-					resources = request.getKeys();
-
-					if (resources != null && !resources.isEmpty()) {
+					if (request.getKeys() != null && !request.getKeys().isEmpty()) {
 						// there should only be 1 key
-						for (ArticleKey key: resources) {
+						for (ArticleKey key: request.getKeys()) {
 							if (!articleContentMap.containsKey(key))
 								continue;
 							content = articleContentMap.get(key);

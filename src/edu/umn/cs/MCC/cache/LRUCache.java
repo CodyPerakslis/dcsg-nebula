@@ -1,7 +1,9 @@
-package edu.umn.cs.MCC.model;
+package edu.umn.cs.MCC.cache;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import edu.umn.cs.MCC.model.ArticleKey;
 
 public class LRUCache extends LinkedHashMap<ArticleKey,String> {
 

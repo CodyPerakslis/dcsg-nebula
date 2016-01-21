@@ -1,7 +1,9 @@
-package edu.umn.cs.MCC.model;
+package edu.umn.cs.MCC.request;
 
 import java.util.HashSet;
 import java.util.Set;
+
+import edu.umn.cs.MCC.model.ArticleKey;
 
 public class MobileRequest {
 	private MobileRequestType type;

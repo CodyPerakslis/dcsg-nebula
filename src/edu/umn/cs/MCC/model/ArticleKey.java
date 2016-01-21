@@ -1,10 +1,14 @@
 package edu.umn.cs.MCC.model;
 
-public class ArticleKey {
+import java.util.Comparator;
+
+public class ArticleKey implements Comparator<ArticleKey> {
 
 	private final ArticleTopic topic;
 	private final String title;
 	private final String url;
+	
+	private double score = -1;
 
 	public ArticleKey(ArticleTopic topic, String title, String url) {
 		this.topic = topic;
@@ -64,6 +68,14 @@ public class ArticleKey {
 			return false;
 		}
 	}
+	
+	public double getScore() {
+		return score;
+	}
+
+	public void setScore(double score) {
+		this.score = score;
+	}
 
 	@Override
 	public int hashCode() {
@@ -78,5 +90,10 @@ public class ArticleKey {
 			hash *= url.hashCode();
 		}
 		return hash;
+	}
+
+	@Override
+	public int compare(ArticleKey key1, ArticleKey key2) {
+		return (int) (key2.getScore() - key1.getScore());
 	}
 }
