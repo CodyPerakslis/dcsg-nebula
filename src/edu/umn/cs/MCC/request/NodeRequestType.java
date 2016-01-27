@@ -1,5 +1,5 @@
 package edu.umn.cs.MCC.request;
 
 public enum NodeRequestType {
-	ONLINE, OFFLINE
+	NEW, ONLINE, OFFLINE, COMPUTE, STORAGE, ALL
 }

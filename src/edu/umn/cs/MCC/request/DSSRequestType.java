@@ -1,0 +1,5 @@
+package edu.umn.cs.MCC.request;
+
+public enum DSSRequestType {
+	GETNODE, GETNODEWITHFILE, NEW, DELETE, DOWNLOAD, DOWNLOADURL, DOWNLOADDSS, UPLOAD, GETFILE
+}

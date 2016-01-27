@@ -1,21 +1,21 @@
 package edu.umn.cs.MCC.request;
 
-import edu.umn.cs.MCC.node.Node;
+import edu.umn.cs.MCC.node.NodeInfo;
 
 public class NodeRequest {
-	private Node node;
+	private NodeInfo node;
 	private NodeRequestType type;
 	
-	public NodeRequest(Node node, NodeRequestType type) {
+	public NodeRequest(NodeInfo node, NodeRequestType type) {
 		this.node = node;
 		this.type = type;
 	}
 	
-	public Node getNode() {
+	public NodeInfo getNode() {
 		return node;
 	}
 	
-	public void setNode(Node node) {
+	public void setNode(NodeInfo node) {
 		this.node = node;
 	}
 

@@ -1,89 +1,78 @@
 package edu.umn.cs.MCC.node;
 
-import java.io.Serializable;
-import java.util.Date;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
-public class Node implements Serializable {
-	private static final long serialVersionUID = 4895419655829174912L;
-	private String id;
-	private String ip;
-	private double latitude;
-	private double longitude;
-	private double bandwidth;
-	private double latency;
-	private NodeType nodeType;
-	private Date lastOnline;
+import com.google.gson.Gson;
+
+public abstract class Node {
 	
-	public Node(String id, String ip, double latitude, double longitude, NodeType nodeType) {
-		this.id = id;
-		this.ip = ip;
-		this.latitude = latitude;
-		this.longitude = longitude;
-		this.nodeType = nodeType;
-		this.lastOnline = new Date();
+	private static NodeInfo info = null;
+	
+	public static void connect(String monitorUrl, NodeType type) {
+		Thread pingThread = new Thread(new PingThread(monitorUrl, type));
+		pingThread.start();
 	}
 	
-	public void setId(String id) {
-		this.id = id;
-	}
-	
-	public String getId() {
-		return id;
-	}
-	
-	public void setIp(String ip) {
-		this.ip = ip;
-	}
-	
-	public String getIp() {
-		return ip;
-	}
-	
-	public void setLatitude(double latitude) {
-		this.latitude = latitude;
-	}
-	
-	public double getLatitude() {
-		return latitude;
-	}
-	
-	public void setLongitude(double longitude) {
-		this.longitude = longitude;
-	}
-	
-	public double getLongitude() {
-		return longitude;
-	}
-	
-	public void setBandwidth(double bandwidth) {
-		this.bandwidth = bandwidth;
-	}
-	
-	public double getBandwidth() {
-		return bandwidth;
-	}
-	
-	public void setNodeType(NodeType nodeType) {
-		this.nodeType = nodeType;
-	}
-	
-	public NodeType getNodeType() {
-		return nodeType;
-	}
-	
-	public void updateLastOnline() {
-		this.lastOnline = new Date();
-	}
-	
-	public Date getLastOnline() {
-		return lastOnline;
+	public static NodeInfo getInfo() {
+		return info;
 	}
 
-	public double getLatency() {
-		return latency;
+	public static void setInfo(NodeInfo info) {
+		Node.info = info;
 	}
 
-	public void setLatency(double latency) {
-		this.latency = latency;
+	private static class PingThread implements Runnable {
+		private final String monitorUrl;
+		private final NodeType type;
+		private final int pingInterval = 5000;
+		
+		private PingThread(String monitorUrl, NodeType type) {
+			this.monitorUrl = monitorUrl;
+			this.type = type;
+		}
+		
+		@Override
+		public void run() {
+			Gson gson = new Gson();
+			BufferedReader in = null;
+			
+			while (true) {
+				try {
+					URL url = new URL(monitorUrl);
+					HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+					conn.setRequestMethod("POST");
+					conn.setDoInput(true);
+					conn.setDoOutput(true);
+
+					PrintWriter out = new PrintWriter(conn.getOutputStream());
+					out.write("requestType=ONLINE&nodeType=" + type);
+					out.flush();
+					conn.connect();
+					
+					if (conn.getResponseCode() == 200) {
+						in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+						setInfo(gson.fromJson(in.readLine(), NodeInfo.class));
+						in.close();
+					} else {
+						System.out.println("[NODE] Response code: " + conn.getResponseCode());
+						System.out.println("[NODE] Message: " + conn.getResponseMessage());
+					}
+				} catch (IOException e) {
+					System.out.println("[NODE] Failed connecting to Nebula: " + e);
+					e.printStackTrace();
+					return;
+				}
+				try {
+					Thread.sleep(pingInterval);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
 	}
 }

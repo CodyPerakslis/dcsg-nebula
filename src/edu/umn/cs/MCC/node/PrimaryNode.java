@@ -30,9 +30,9 @@ public class PrimaryNode {
 
 	private static final int port = 6430;
 	private static final int poolSize = 10;
-	private static HashMap<String, Node> mobileUsers = new HashMap<String, Node>();
+	private static HashMap<String, NodeInfo> mobileUsers = new HashMap<String, NodeInfo>();
 
-	private static HashMap<String, Node> nodes = new HashMap<String, Node>();
+	private static HashMap<String, NodeInfo> nodes = new HashMap<String, NodeInfo>();
 	private static Object nodesLock = new Object();
 	private static long updateFrequency = 10000;
 	private static String cloudServer = "http://localhost:8080/MCCInterface/WebInterface";
@@ -45,6 +45,7 @@ public class PrimaryNode {
 	private static LRUCache articleContentMap = new LRUCache(cacheSize);
 
 	private static CNNFetcher resourceFetcher = new CNNFetcher();
+	private static String id = null;
 
 
 	public static void main(String[] args) {
@@ -88,7 +89,7 @@ public class PrimaryNode {
 		String userId = request.getUserId();
 		double lat = request.getLatitude();
 		double lon = request.getLongitude();
-		Node user = mobileUsers.get(userId);
+		NodeInfo user = mobileUsers.get(userId);
 
 		// make sure the coordinate is within the correct range
 		if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
@@ -97,7 +98,7 @@ public class PrimaryNode {
 
 		if (user == null) {
 			// new user
-			user = new Node(userId, userId, lat, lon, NodeType.MOBILE);
+			user = new NodeInfo(userId, userId, lat, lon, NodeType.MOBILE);
 		} else {
 			// update the coordinate of the user
 			user.setLatitude(lat);
@@ -218,6 +219,7 @@ public class PrimaryNode {
 		@Override
 		public void run() {
 			System.out.println("Connecting to " + cloudServer);
+			
 			while (true) {
 				PrintWriter out = null;
 				BufferedReader in = null;
@@ -232,19 +234,31 @@ public class PrimaryNode {
 					conn.setDoOutput(true);
 
 					out = new PrintWriter(conn.getOutputStream());
-					out.write("type=online&nodeType=PRIMARY");
+					if (id == null) {
+						out.write("id=" + id + "&type=NEW&nodeType=PRIMARY");
+					} else {
+						out.write("id=" + id + "&type=ONLINE&nodeType=PRIMARY");
+					}
 					out.flush();
 					conn.connect();
 					in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
 
-					synchronized (nodesLock) {
-						HashMap<String, Node> onlineNodes = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, Node>>(){}.getType());
+					if (id == null) {
+						HashMap<String, NodeInfo> onlineNodes = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, NodeInfo>>(){}.getType());
+						if (onlineNodes != null && !onlineNodes.isEmpty()) {
+							String[] temp = onlineNodes.keySet().toArray(new String[onlineNodes.keySet().size()]);
+							id = temp[0];
+						}
+					} else {
+						synchronized (nodesLock) {
+							HashMap<String, NodeInfo> onlineNodes = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, NodeInfo>>(){}.getType());
 
-						if (onlineNodes == null || onlineNodes.isEmpty()) {
-							nodes.clear();
-							System.out.println("No online nodes.");
-						} else {
-							nodes = onlineNodes;
+							if (onlineNodes == null || onlineNodes.isEmpty()) {
+								nodes.clear();
+								System.out.println("No online nodes.");
+							} else {
+								nodes = onlineNodes;
+							}
 						}
 					}
 					in.close();

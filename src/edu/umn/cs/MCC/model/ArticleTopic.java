@@ -4,6 +4,7 @@ public enum ArticleTopic {
     POLITICS,
     BUSINESS,
     TECHNOLOGY,
+    SPORTS,
     ENTERTAINMENT,
     HEALTH;
 }

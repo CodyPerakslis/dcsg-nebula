@@ -42,7 +42,7 @@ public class CNNFetcher implements ResourceFetcher {
     	String result = "";
     	
         try {
-        	// connect to the CNN server origin to get the content of the key
+        	// connect to the CNN server origin to get the content associated with the key
         	URL url = new URL(key.getUrl());
             URLConnection conn = url.openConnection();
             BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
@@ -63,7 +63,10 @@ public class CNNFetcher implements ResourceFetcher {
 			}
 			
 			for (Element p: paragraphs) {
-				result += p.text();
+				result += p.text() + "\n";
+				
+				if (!p.text().endsWith("\n"))
+					result += "\n";
 			}
 			in.close();
 		} catch (IOException e) {
