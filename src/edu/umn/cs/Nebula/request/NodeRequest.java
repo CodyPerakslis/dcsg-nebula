@@ -1,6 +1,6 @@
-package edu.umn.cs.MCC.request;
+package edu.umn.cs.Nebula.request;
 
-import edu.umn.cs.MCC.node.NodeInfo;
+import edu.umn.cs.Nebula.node.NodeInfo;
 
 public class NodeRequest {
 	private NodeInfo node;

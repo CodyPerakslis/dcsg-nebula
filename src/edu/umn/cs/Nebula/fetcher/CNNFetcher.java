@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.fetcher;
+package edu.umn.cs.Nebula.fetcher;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -14,8 +14,8 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import edu.umn.cs.MCC.model.ArticleKey;
-import edu.umn.cs.MCC.model.ArticleTopic;
+import edu.umn.cs.Nebula.model.ArticleKey;
+import edu.umn.cs.Nebula.model.ArticleTopic;
 
 /**
  * @author albert

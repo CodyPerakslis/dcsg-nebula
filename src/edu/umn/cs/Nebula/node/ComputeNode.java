@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.node;
+package edu.umn.cs.Nebula.node;
 
 public class ComputeNode extends Node {
 

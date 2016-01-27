@@ -1,10 +1,10 @@
-package edu.umn.cs.MCC.fetcher;
+package edu.umn.cs.Nebula.fetcher;
 
 import java.util.HashMap;
 import java.util.Set;
 
-import edu.umn.cs.MCC.model.ArticleKey;
-import edu.umn.cs.MCC.model.ArticleTopic;
+import edu.umn.cs.Nebula.model.ArticleKey;
+import edu.umn.cs.Nebula.model.ArticleTopic;
 
 public interface ResourceFetcher {
 

@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.node;
+package edu.umn.cs.Nebula.node;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -19,12 +19,12 @@ import java.util.concurrent.Executors;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import edu.umn.cs.MCC.cache.LRUCache;
-import edu.umn.cs.MCC.fetcher.CNNFetcher;
-import edu.umn.cs.MCC.model.ArticleKey;
-import edu.umn.cs.MCC.model.ArticleTopic;
-import edu.umn.cs.MCC.request.MobileRequest;
-import edu.umn.cs.MCC.request.MobileRequestType;
+import edu.umn.cs.Nebula.cache.LRUCache;
+import edu.umn.cs.Nebula.fetcher.CNNFetcher;
+import edu.umn.cs.Nebula.model.ArticleKey;
+import edu.umn.cs.Nebula.model.ArticleTopic;
+import edu.umn.cs.Nebula.request.MobileRequest;
+import edu.umn.cs.Nebula.request.MobileRequestType;
 
 public class PrimaryNode {
 

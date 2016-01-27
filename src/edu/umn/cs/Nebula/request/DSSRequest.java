@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.request;
+package edu.umn.cs.Nebula.request;
 
 public class DSSRequest {
 	private String nodeId;

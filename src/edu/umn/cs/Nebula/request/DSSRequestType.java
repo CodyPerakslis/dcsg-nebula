@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.request;
+package edu.umn.cs.Nebula.request;
 
 public enum DSSRequestType {
 	GETNODE, GETNODEWITHFILE, NEW, DELETE, DOWNLOAD, DOWNLOADURL, DOWNLOADDSS, UPLOAD, GETFILE

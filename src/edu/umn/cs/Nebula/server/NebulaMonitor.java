@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.server;
+package edu.umn.cs.Nebula.server;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -13,10 +13,10 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.MCC.node.NodeInfo;
-import edu.umn.cs.MCC.node.NodeType;
-import edu.umn.cs.MCC.request.NodeRequest;
-import edu.umn.cs.MCC.request.NodeRequestType;
+import edu.umn.cs.Nebula.node.NodeInfo;
+import edu.umn.cs.Nebula.node.NodeType;
+import edu.umn.cs.Nebula.request.NodeRequest;
+import edu.umn.cs.Nebula.request.NodeRequestType;
 
 public class NebulaMonitor {
 	private static final long maxInactive = 10000; // 10 seconds

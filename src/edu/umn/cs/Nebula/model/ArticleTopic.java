@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.model;
+package edu.umn.cs.Nebula.model;
 
 public enum ArticleTopic {
     POLITICS,

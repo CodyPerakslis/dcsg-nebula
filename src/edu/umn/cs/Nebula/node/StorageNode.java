@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.node;
+package edu.umn.cs.Nebula.node;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -19,8 +19,8 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.MCC.request.DSSRequest;
-import edu.umn.cs.MCC.request.DSSRequestType;
+import edu.umn.cs.Nebula.request.DSSRequest;
+import edu.umn.cs.Nebula.request.DSSRequestType;
 
 public class StorageNode extends Node {
 	private static final int poolSize = 10;

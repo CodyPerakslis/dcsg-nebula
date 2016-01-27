@@ -1,4 +1,4 @@
-package edu.umn.cs.MCC.server;
+package edu.umn.cs.Nebula.server;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -16,11 +16,11 @@ import redis.clients.jedis.Jedis;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import edu.umn.cs.MCC.node.NodeInfo;
-import edu.umn.cs.MCC.request.DSSRequest;
-import edu.umn.cs.MCC.request.DSSRequestType;
-import edu.umn.cs.MCC.request.NodeRequest;
-import edu.umn.cs.MCC.request.NodeRequestType;
+import edu.umn.cs.Nebula.node.NodeInfo;
+import edu.umn.cs.Nebula.request.DSSRequest;
+import edu.umn.cs.Nebula.request.DSSRequestType;
+import edu.umn.cs.Nebula.request.NodeRequest;
+import edu.umn.cs.Nebula.request.NodeRequestType;
 
 public class NebulaDSSMaster {
 
