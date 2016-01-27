@@ -1,29 +1,43 @@
 package edu.umn.cs.Nebula.cache;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.HashMap;
+import java.util.LinkedList;
 
-import edu.umn.cs.Nebula.model.ArticleKey;
-
-public class LRUCache extends LinkedHashMap<ArticleKey,String> {
-
-	private static final long serialVersionUID = 1L;
+public class LRUCache {
+	
 	private final int maxSize;
-
-	/**
-	 * Create a new resource cache.
-	 * @param maxSize The maximum number of entries that may occupy the cache at a time.
-	 */
-	public LRUCache(int maxSize) {
-		super(maxSize + 1, 0.75f, true);
-	    this.maxSize = maxSize;
+	private LinkedList<String> index;
+	private HashMap<String, Object> data;
+	
+	public LRUCache(int size) {
+		maxSize = size;
+		index = new LinkedList<String>();
+		data = new HashMap<String, Object>();
 	}
 	
-	public int getMaxSize() {
-		return maxSize;
+	public void add(String key, Object value) {
+		if (!data.containsKey(key)) {
+			if (index.size() == maxSize) {
+				removeOldest();
+			}
+		} else {
+			index.remove(key);
+		}
+		index.addLast(key);
+		data.put(key, value);
 	}
-
-	protected boolean removeEldestEntry(Map.Entry<ArticleKey,String> eldest) {
-		return size() > maxSize;
+	
+	public Object remove(String key) {
+		index.remove(key);
+		return data.remove(key);
+	}
+	
+	public Object removeOldest() {
+		String removedKey = index.removeFirst();
+		return data.remove(removedKey);
+	}
+	
+	public boolean containsKey(String key) {
+		return data.containsKey(key);
 	}
 }
