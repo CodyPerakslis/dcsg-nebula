@@ -84,7 +84,7 @@ public class StorageNode extends Node {
 			// Send a NEW message to the DSS Master
 			System.out.println("[DSS] Reporting new file to the master.");
 			DSSRequest request = new DSSRequest(DSSRequestType.NEW, namespace, filename);
-			request.setNodeId(getInfo().getId());
+			request.setNodeId(id);
 			out.println(gson.toJson(request));
 			out.flush();
 
@@ -99,7 +99,7 @@ public class StorageNode extends Node {
 				if (out != null) out.close();
 				if (socket != null) socket.close();
 			} catch (IOException e) {
-				System.err.println("Failed to close streams or socket: " + e);
+				System.err.println("[DSS] Failed to close streams or socket: " + e);
 			}
 		}
 		return success;
@@ -288,7 +288,7 @@ public class StorageNode extends Node {
 			} else if (type.equals(DSSRequestType.UPLOAD) && destination != null && !destination.isEmpty()) {
 				success = uploadFile(destination, namespace, filename);
 			} 
-			System.out.println("File " + type + " completed. Success: " + success);
+			System.out.println("[DSS] File " + type + " completed. Success: " + success);
 		}
 
 		/**
@@ -506,7 +506,7 @@ public class StorageNode extends Node {
 
 				System.out.println("[DSS] Getting a file from the DSS: " + ip);
 				request = new DSSRequest(DSSRequestType.GETFILE, namespace, filename);
-				request.setNodeId(getInfo().getIp());
+				request.setNodeId(ip);
 				out.println(gson.toJson(request));
 				out.flush();
 				success = gson.fromJson(in.readLine(), Boolean.class);

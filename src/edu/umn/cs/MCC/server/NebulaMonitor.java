@@ -147,25 +147,28 @@ public class NebulaMonitor {
 							nodeRequest.getType().equals(NodeRequestType.OFFLINE)) {
 						// handle heartbeat from a node
 						NodeInfo node = handleHeartbeat(nodeRequest);
-						if (node != null)
-							result.put(node.getId(), node);
+						out.println(gson.toJson(node));
 					} else if (nodeRequest.getType().equals(NodeRequestType.COMPUTE)) {
 						// handle get a list of compute nodes
 						result.putAll(computeNodes);
+						out.println(gson.toJson(result));
 					} else if (nodeRequest.getType().equals(NodeRequestType.STORAGE)) {
 						// handle get a list of storage nodes
 						result.putAll(storageNodes);
+						out.println(gson.toJson(result));
 					} else if (nodeRequest.getType().equals(NodeRequestType.ALL)) {
 						// handle get a list of all nodes
 						result.putAll(computeNodes);
 						result.putAll(storageNodes);
+						out.println(gson.toJson(result));
 					} else {
 						System.out.println("[MONITOR] Request not found. Type: " + nodeRequest.getType());
+						out.println(gson.toJson(result));
 					}
 				} else {
 					System.out.println("[MONITOR] Request not found.");
+					out.println(gson.toJson(result));
 				}
-				out.println(gson.toJson(result));
 				out.flush();
 			} catch (IOException e) {
 				System.err.println("Error: " + e);

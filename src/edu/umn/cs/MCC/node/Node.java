@@ -11,19 +11,12 @@ import com.google.gson.Gson;
 
 public abstract class Node {
 	
-	private static NodeInfo info = null;
+	public static String id = null;
+	public static String ip = null;
 	
 	public static void connect(String monitorUrl, NodeType type) {
 		Thread pingThread = new Thread(new PingThread(monitorUrl, type));
 		pingThread.start();
-	}
-	
-	public static NodeInfo getInfo() {
-		return info;
-	}
-
-	public static void setInfo(NodeInfo info) {
-		Node.info = info;
 	}
 
 	private static class PingThread implements Runnable {
@@ -50,13 +43,21 @@ public abstract class Node {
 					conn.setDoOutput(true);
 
 					PrintWriter out = new PrintWriter(conn.getOutputStream());
-					out.write("requestType=ONLINE&nodeType=" + type);
+					if (id == null) {
+						out.write("requestType=ONLINE&nodeType=" + type);
+					} else {
+						out.write("id=" + id + "&requestType=ONLINE&nodeType=" + type);
+					}
 					out.flush();
 					conn.connect();
 					
 					if (conn.getResponseCode() == 200) {
 						in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-						setInfo(gson.fromJson(in.readLine(), NodeInfo.class));
+						NodeInfo info = gson.fromJson(in.readLine(), NodeInfo.class);
+						if (id == null || ip == null) {
+							id = info.getId();
+							ip = info.getIp();
+						}
 						in.close();
 					} else {
 						System.out.println("[NODE] Response code: " + conn.getResponseCode());
