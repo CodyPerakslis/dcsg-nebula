@@ -484,7 +484,6 @@ public class StorageNode extends Node {
 									downloader);
 						}
 					} else if (request.getType().equals(DSSRequestType.CACHE)) {
-						// TODO cache data from the disk
 						File file = new File(fileDirectory + "/" + request.getNamespace() + "-" + request.getFilename());
 						if (file.exists()) {
 							FileInputStream fis = new FileInputStream(file);
@@ -496,6 +495,7 @@ public class StorageNode extends Node {
 							cache.add(file.getName(), data);
 							fis.close();
 							response = true;
+							System.out.println("[DSS] Cached: " + cache.getKeys());
 						}
 					}
 				}

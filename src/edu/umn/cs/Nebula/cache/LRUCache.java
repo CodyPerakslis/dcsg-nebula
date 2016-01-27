@@ -2,6 +2,7 @@ package edu.umn.cs.Nebula.cache;
 
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.List;
 
 public class LRUCache {
 	
@@ -39,5 +40,9 @@ public class LRUCache {
 	
 	public boolean containsKey(String key) {
 		return data.containsKey(key);
+	}
+	
+	public List<String> getKeys() {
+		return index;
 	}
 }
