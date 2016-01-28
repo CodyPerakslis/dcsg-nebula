@@ -36,7 +36,7 @@ public class NebulaMobileServer {
 	 * @param mobileUser
 	 * @return
 	 */
-	public static String getNode(NodeInfo mobileUser) {
+	public static String getNodeForUser(NodeInfo mobileUser) {
 		String nodeId = null;
 		Double bestScore = -1.0;
 		Location loc = new Location(gridSize, mobileUser.getLatitude(), mobileUser.getLongitude());
@@ -221,10 +221,11 @@ public class NebulaMobileServer {
 					out.close();
 					socket.close();
 					Thread.sleep(updateInterval);
-				} catch (IOException | InterruptedException e) {
+				} catch (IOException e) {
 					System.out.println("[MOBILE] Failed connecting to Nebula Monitor: " + e);
-					e.printStackTrace();
 					return;
+				} catch (InterruptedException e1) {
+					System.out.println("[MOBILE] Sleep interrupted: " + e1);
 				}
 			}
 		}
@@ -267,7 +268,7 @@ public class NebulaMobileServer {
 								mobileRequest.getUserIp(), 
 								mobileRequest.getLatitude(), mobileRequest.getLongitude(), NodeType.MOBILE);
 						// get a node for the mobile user
-						response = getNode(mobileUser);
+						response = getNodeForUser(mobileUser);
 						break;
 					default:
 						System.out.println("[MOBILE] Undefined request type: " + mobileRequest.getType());

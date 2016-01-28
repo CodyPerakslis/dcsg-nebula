@@ -110,10 +110,12 @@ public class NebulaDSSMaster {
 					out.close();
 					socket.close();
 					Thread.sleep(updateInterval);
-				} catch (IOException | InterruptedException e) {
+				} catch (IOException  e) {
 					System.out.println("[DSSMaster] Failed connecting to Nebula Monitor: " + e);
 					e.printStackTrace();
 					return;
+				} catch (InterruptedException e1) {
+					System.out.println("[DSSMaster] Sleep interrupted: " + e1);
 				}
 			}
 		}
