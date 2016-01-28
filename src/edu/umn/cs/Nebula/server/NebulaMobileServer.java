@@ -12,19 +12,22 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
 import edu.umn.cs.Nebula.model.Location;
 import edu.umn.cs.Nebula.node.NodeInfo;
 import edu.umn.cs.Nebula.node.NodeType;
 import edu.umn.cs.Nebula.request.MobileRequest;
+import edu.umn.cs.Nebula.request.NodeRequest;
+import edu.umn.cs.Nebula.request.NodeRequestType;
 
 public class NebulaMobileServer {
 
-	private static final int port = 6424;
+	private static final int port = 6425;
 	private static final int poolSize = 50;
 	private static final int gridSize = 10;
 
-	private static HashMap<String, NodeInfo> primaryNodes = new HashMap<String, NodeInfo>();
+	private static HashMap<String, NodeInfo> storageNodes = new HashMap<String, NodeInfo>();
 	private static HashMap<Integer, HashMap<Integer, HashMap<String, Double>>> locationNodesMap = new HashMap<>();
 	// <x, <y, <id, score>>>
 
@@ -149,13 +152,17 @@ public class NebulaMobileServer {
 			} while (i < gridSize && nodeId != null); // terminate when a node is found in the neighboring grid cell
 		}
 		if (nodeId == null) {
-			System.out.println("No online node found in all location.");
+			System.out.println("[MOBILE] No online node found in all location.");
 		}
 
 		return nodeId;
 	}
 
 	public static void main(String[] args) {
+		System.out.println("[MOBILE] Connecting to Monitor");
+		Thread monitorThread = new Thread(new MonitorThread());
+		monitorThread.start();
+
 		// Listening for client requests
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
@@ -174,6 +181,52 @@ public class NebulaMobileServer {
 					serverSock.close();
 				} catch (IOException e) {
 					System.err.println("[MOBILE] Failed to close listening socket");
+				}
+			}
+		}
+	}
+
+	/**
+	 * This thread class will periodically update the list of online storage nodes
+	 * from Nebula Monitor.
+	 * @author albert
+	 *
+	 */
+	private static class MonitorThread implements Runnable {
+		private static final String monitorUrl = "localhost";
+		private static final int monitorPort = 6422;
+		private static final long updateInterval = 10000;
+		private static Socket socket;
+
+		@Override
+		public void run() {
+			System.out.println("[MOBILE] Getting nodes from " + monitorUrl);
+			while (true) {
+				BufferedReader in = null;
+				PrintWriter out = null;
+				Gson gson = new Gson(); 
+
+				try {
+					socket = new Socket(monitorUrl, monitorPort);
+
+					in = new BufferedReader(new InputStreamReader (socket.getInputStream()));
+					out = new PrintWriter(socket.getOutputStream(), true);
+
+					// Send GET storage nodes request to NebulaMonitor
+					NodeRequest request = new NodeRequest(null, NodeRequestType.STORAGE);
+					out.println(gson.toJson(request));
+					out.flush();
+
+					// Parse the list of online storage nodes
+					storageNodes = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, NodeInfo>>(){}.getType());
+					in.close();
+					out.close();
+					socket.close();
+					Thread.sleep(updateInterval);
+				} catch (IOException | InterruptedException e) {
+					System.out.println("[MOBILE] Failed connecting to Nebula Monitor: " + e);
+					e.printStackTrace();
+					return;
 				}
 			}
 		}
@@ -209,48 +262,35 @@ public class NebulaMobileServer {
 
 				if (mobileRequest != null) {
 					// handle a mobile user's request
-					response = handleMobileRequest(mobileRequest);
+					switch (mobileRequest.getType()) {
+					case LOCATION:
+						// a request for getting a primary node to support the mobile user
+						NodeInfo mobileUser = new NodeInfo(mobileRequest.getUserId(), 
+								mobileRequest.getUserIp(), 
+								mobileRequest.getLatitude(), mobileRequest.getLongitude(), NodeType.MOBILE);
+						// get a node for the mobile user
+						response = getNode(mobileUser);
+						break;
+					default:
+						System.out.println("[MOBILE] Undefined request type: " + mobileRequest.getType());
+					}
 					out.println(gson.toJson(response));
 				} else {
 					// unsupported request, return a list of online primary nodes
-					out.println(gson.toJson(primaryNodes));
+					out.println(gson.toJson(storageNodes));
 				}
 				out.flush();
 			} catch (IOException e) {
-				System.err.println("Error: " + e);
+				System.err.println("[MOBILE] Error: " + e);
 			} finally {
 				try {
 					if (in != null) in.close();
 					if (out != null) out.close();
 					if (clientSock != null) clientSock.close();
 				} catch (IOException e) {
-					System.out.println("Failed to close streams or socket: " + e);
+					System.out.println("[MOBILE] Failed to close streams or socket: " + e);
 				}
 			}
-		}
-
-		/**
-		 * Handle a request from mobile application. The request's type is defined in {@code MobileRequestType.java}
-		 * 
-		 * @param request
-		 * @return
-		 */
-		private String handleMobileRequest(MobileRequest request) {
-			String status = "failed";
-
-			switch (request.getType()) {
-			case LOCATION:
-				// a request for getting a primary node to support the mobile user
-				NodeInfo mobileUser = new NodeInfo(request.getUserId(), 
-						request.getUserIp(), 
-						request.getLatitude(), request.getLongitude(), NodeType.MOBILE);
-				// get a node for the mobile user
-				status = getNode(mobileUser);
-				break;
-			default:
-				System.out.println("Undefined request type: " + request.getType());
-			}
-			return status;
 		}
 	}
 }
