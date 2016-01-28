@@ -1,10 +1,7 @@
-package edu.umn.cs.Nebula.fetcher;
+package edu.umn.cs.Nebula.mobile;
 
 import java.util.HashMap;
 import java.util.Set;
-
-import edu.umn.cs.Nebula.mobile.ArticleKey;
-import edu.umn.cs.Nebula.mobile.ArticleTopic;
 
 public interface ResourceFetcher {
 
