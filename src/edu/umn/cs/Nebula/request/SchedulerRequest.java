@@ -1,14 +1,20 @@
 package edu.umn.cs.Nebula.request;
 
-import edu.umn.cs.Nebula.node.NodeType;
+import java.util.HashMap;
+import java.util.Set;
+
+import edu.umn.cs.Nebula.model.Lease;
+
 
 public class SchedulerRequest {
 	private SchedulerRequestType type;
-	private NodeType nodeType;
+	private String schedulerName;
+	private HashMap<String, Lease> leases;
 
-	public SchedulerRequest(SchedulerRequestType type, NodeType nodeType) {
+	public SchedulerRequest(SchedulerRequestType type, String schedulerName) {
 		this.type = type;
-		this.setNodeType(nodeType);
+		this.setSchedulerName(schedulerName);
+		leases = new HashMap<String, Lease>();
 	}
 	
 	public SchedulerRequestType getType() {
@@ -19,11 +25,31 @@ public class SchedulerRequest {
 		this.type = type;
 	}
 
-	public NodeType getNodeType() {
-		return nodeType;
+	public String getSchedulerName() {
+		return schedulerName;
 	}
 
-	public void setNodeType(NodeType nodeType) {
-		this.nodeType = nodeType;
+	public void setSchedulerName(String schedulerName) {
+		this.schedulerName = schedulerName;
+	}
+	
+	public void addLease(String nodeId, Lease lease) {
+		leases.put(nodeId, lease);
+	}
+	
+	public Lease removeLease(String nodeId) {
+		return leases.remove(nodeId);
+	}
+	
+	public Lease getLease(String nodeId) {
+		return leases.get(nodeId);
+	}
+	
+	public int getNumLeases() {
+		return leases.size();
+	}
+	
+	public Set<String> getNodes() {
+		return leases.keySet();
 	}
 }

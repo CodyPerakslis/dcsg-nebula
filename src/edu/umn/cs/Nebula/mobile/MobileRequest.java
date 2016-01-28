@@ -1,9 +1,7 @@
-package edu.umn.cs.Nebula.request;
+package edu.umn.cs.Nebula.mobile;
 
 import java.util.HashSet;
 import java.util.Set;
-
-import edu.umn.cs.Nebula.model.ArticleKey;
 
 public class MobileRequest {
 	private MobileRequestType type;

@@ -14,8 +14,8 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import edu.umn.cs.Nebula.model.ArticleKey;
-import edu.umn.cs.Nebula.model.ArticleTopic;
+import edu.umn.cs.Nebula.mobile.ArticleKey;
+import edu.umn.cs.Nebula.mobile.ArticleTopic;
 
 /**
  * @author albert

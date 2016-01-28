@@ -12,6 +12,7 @@ public class NodeInfo implements Serializable {
 	private double latency;
 	private NodeType nodeType;
 	private long lastOnline;
+	private String note;
 	
 	public NodeInfo(String id, String ip, double latitude, double longitude, NodeType nodeType) {
 		this.id = id;
@@ -84,5 +85,13 @@ public class NodeInfo implements Serializable {
 
 	public void setLatency(double latency) {
 		this.latency = latency;
+	}
+
+	public String getNote() {
+		return note;
+	}
+
+	public void setNote(String note) {
+		this.note = note;
 	}
 }

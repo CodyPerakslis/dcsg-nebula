@@ -19,6 +19,7 @@ import edu.umn.cs.Nebula.model.Lease;
 import edu.umn.cs.Nebula.node.NodeInfo;
 import edu.umn.cs.Nebula.request.NodeRequest;
 import edu.umn.cs.Nebula.request.NodeRequestType;
+import edu.umn.cs.Nebula.request.SchedulerRequest;
 
 /**
  * Nebula Resource Manager which uses a leasing mechanism.
@@ -124,10 +125,13 @@ public class ResourceManager {
 	}
 
 	public static void main(String[] args) {
-		System.out.println("[RM] Setting up resource manager ...");
+		System.out.print("[RM] Setting up resource manager ...");
 		Thread nodeMonitorThread = new Thread(new MonitorThread());
 		nodeMonitorThread.start();
-
+		Thread statusThread = new Thread(new StatusThread());
+		statusThread.start();
+		System.out.println("[OK]");
+		
 		// Listening for client requests
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
@@ -165,7 +169,7 @@ public class ResourceManager {
 
 		@Override
 		public void run() {
-			System.out.println("[ResourceManager] Getting nodes from " + monitorUrl);
+			System.out.println("[RM] Getting nodes from " + monitorUrl);
 			while (true) {
 				BufferedReader in = null;
 				PrintWriter out = null;
@@ -195,13 +199,37 @@ public class ResourceManager {
 					out.close();
 					socket.close();
 					Thread.sleep(updateInterval);
-				} catch (IOException | InterruptedException e) {
-					System.out.println("[ResourceManager] Failed connecting to Nebula Monitor: " + e);
-					e.printStackTrace();
+				} catch (IOException e) {
+					System.out.println("[RM] Failed connecting to Nebula Monitor: " + e);
 					return;
+				} catch (InterruptedException e1) {
+					System.out.println("[RM] Sleep interrupted: " + e1);
 				}
 			}
 		}
+	}
+	
+	private static class StatusThread implements Runnable {
+		private static final long printInterval = 10000;
+		
+		@Override
+		public void run() {
+			while (true) {
+				
+				synchronized (nodesLock) {
+					for (String nodeId: busyNodes.keySet()) {
+						System.out.println(nodeId + ": " + busyNodes.get(nodeId).getScheduler() + ", " + busyNodes.get(nodeId).getRemainingTime());
+					}
+				}
+				
+				try {
+					Thread.sleep(printInterval);
+				} catch (InterruptedException e) {
+					System.out.println("[RM] Sleep interrupted: " + e);
+				}
+			}
+		}
+		
 	}
 
 	/**
@@ -222,13 +250,86 @@ public class ResourceManager {
 			Gson gson = new Gson();
 
 			try {
-				System.out.println("[RM] Receive a connection from a scheduler.");
-
 				out = new PrintWriter(socket.getOutputStream(), true);
 				in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-				// TODO handle request from a scheduler
+				SchedulerRequest request = gson.fromJson(in, SchedulerRequest.class);
 
+				if (request == null) {
+					out.println(false);
+					if (in != null) in.close();
+					if (out != null) out.close();
+					socket.close();
+					return;
+				}
+				
+				System.out.println("[RM] Receive a " + request.getType() + " request from " + request.getSchedulerName());
+				
+				switch(request.getType()) {
+				case GET:
+					// Return the status of all nodes, including the busy nodes
+					HashMap<String, NodeInfo> activeNodes = new HashMap<String, NodeInfo>();
+
+					synchronized (nodesLock) {
+						for (String nodeId: nodes.keySet()) {
+							NodeInfo info = nodes.get(nodeId);
+							// Add the remaining time to expire
+							if (busyNodes.containsKey(nodeId)) {
+								info.setNote("" + busyNodes.get(nodeId).getRemainingTime());
+							} else {
+								info.setNote("0");
+							}
+							activeNodes.put(nodeId, info);
+						}
+					}
+					out.println(gson.toJson(activeNodes));
+				case LEASE:
+					HashMap<String, Lease> successfullyLeasedNodes = new HashMap<String, Lease>();
+
+					synchronized (nodesLock) {
+						for (String nodeId: request.getNodes()) {
+							// the node is not available
+							if (!nodes.containsKey(nodeId)) {
+								continue;
+							}
+
+							if (busyNodes.containsKey(nodeId)) {
+								if (!busyNodes.get(nodeId).getScheduler().equals(request.getSchedulerName())) {
+									// do not let a scheduler to acquire a node that's already claimed by other scheduler
+									continue;
+								}
+							} 
+							
+							busyNodes.put(nodeId, request.getLease(nodeId));
+							successfullyLeasedNodes.put(nodeId, request.getLease(nodeId));
+						}
+					}
+					System.out.println("[RM] Leased: " + successfullyLeasedNodes.keySet() + " by " + request.getSchedulerName());
+					out.println(gson.toJson(successfullyLeasedNodes));
+				case RELEASE:
+					Set<String> releasedNodes = request.getNodes();
+					if (releasedNodes == null) {
+						out.println(gson.toJson(false));
+					} else {
+						synchronized (nodesLock) {
+							for (String nodeId: releasedNodes) {
+								if (nodes.get(nodeId) == null || busyNodes.get(nodeId) == null) {
+									continue; // ignore invalid node id
+								}
+								if (busyNodes.get(nodeId).getScheduler() != null && 
+										busyNodes.get(nodeId).getScheduler().equalsIgnoreCase(request.getSchedulerName())) {
+									// free the node iff it was leased by the scheduler that sent the request
+									busyNodes.remove(nodeId);
+								}
+							}
+						}
+						// TODO need to make sure that the tasks have been terminated
+						out.println(gson.toJson(true));
+					}
+				default:
+					System.out.println("[RM] Invalid request: " + request.getType());
+					out.println(gson.toJson(false));
+				}
 				out.flush();
 			} catch (IOException e) {
 				System.out.println("[RM] Failed processing request from a scheduler: " + e);

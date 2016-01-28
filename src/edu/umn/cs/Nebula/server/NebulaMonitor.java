@@ -16,7 +16,6 @@ import com.google.gson.Gson;
 import edu.umn.cs.Nebula.node.NodeInfo;
 import edu.umn.cs.Nebula.node.NodeType;
 import edu.umn.cs.Nebula.request.NodeRequest;
-import edu.umn.cs.Nebula.request.NodeRequestType;
 
 public class NebulaMonitor {
 	private static final long maxInactive = 10000; // 10 seconds
@@ -67,7 +66,7 @@ public class NebulaMonitor {
 	 *
 	 */
 	private static class NodeMonitorThread implements Runnable {
-		
+
 		@Override
 		public void run() {
 			NodeInfo nodeInfo = null;
@@ -114,7 +113,7 @@ public class NebulaMonitor {
 			}
 		}
 	}
-	
+
 	/**
 	 * This thread class will handle any request from the node/end-user.
 	 * @author albert
@@ -143,25 +142,30 @@ public class NebulaMonitor {
 				NodeRequest nodeRequest = gson.fromJson(input, NodeRequest.class);
 
 				if (nodeRequest != null) {
-					if (nodeRequest.getType().equals(NodeRequestType.ONLINE) || 
-							nodeRequest.getType().equals(NodeRequestType.OFFLINE)) {
+					switch (nodeRequest.getType()) {
+					case ONLINE:
+					case OFFLINE:
 						// handle heartbeat from a node
 						NodeInfo node = handleHeartbeat(nodeRequest);
 						out.println(gson.toJson(node));
-					} else if (nodeRequest.getType().equals(NodeRequestType.COMPUTE)) {
+						break;
+					case COMPUTE:
 						// handle get a list of compute nodes
 						result.putAll(computeNodes);
 						out.println(gson.toJson(result));
-					} else if (nodeRequest.getType().equals(NodeRequestType.STORAGE)) {
+						break;
+					case STORAGE:
 						// handle get a list of storage nodes
 						result.putAll(storageNodes);
 						out.println(gson.toJson(result));
-					} else if (nodeRequest.getType().equals(NodeRequestType.ALL)) {
+						break;
+					case ALL:
 						// handle get a list of all nodes
 						result.putAll(computeNodes);
 						result.putAll(storageNodes);
 						out.println(gson.toJson(result));
-					} else {
+						break;
+					default:
 						System.out.println("[MONITOR] Request not found. Type: " + nodeRequest.getType());
 						out.println(gson.toJson(result));
 					}

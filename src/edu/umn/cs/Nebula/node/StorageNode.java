@@ -34,7 +34,7 @@ public class StorageNode extends Node {
 
 	private static final String masterUrl = "localhost";
 	private static final int masterPort = 6423;
-	
+
 	private static LRUCache cache;
 
 	public static void main(String args[]) {
@@ -42,13 +42,13 @@ public class StorageNode extends Node {
 			System.out.println("[DSS] Invalid arguments: NebulaURL, CacheSize");
 			return;
 		}
-		
+
 		String nebulaUrl = args[0];
 		connect(nebulaUrl, NodeType.STORAGE);
 
 		int cacheSize = Integer.parseInt(args[1]);
 		cache = new LRUCache(cacheSize);
-		
+
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
 
@@ -173,10 +173,10 @@ public class StorageNode extends Node {
 			System.out.println("[DSS] Failed deleting file: " + e);
 			return false;
 		}
-		
+
 		return true;
 	}
-	
+
 	/**
 	 * Upload a file specified by the arguments and send it to another location.
 	 * 
@@ -245,7 +245,7 @@ public class StorageNode extends Node {
 			serverSocket = new ServerSocket(fileTransferPort);
 			serverSocket.setSoTimeout(timeout);
 			clientSocket = serverSocket.accept();
-			
+
 			out = new FileOutputStream(file);
 			in = clientSocket.getInputStream();
 
@@ -287,7 +287,7 @@ public class StorageNode extends Node {
 		}
 		return success;
 	}
-	
+
 	/**
 	 * Download file from a given URL. Report to the DSS Master when the download finishes.
 	 * 
@@ -301,10 +301,10 @@ public class StorageNode extends Node {
 		FileOutputStream out = null;
 		InputStream in = null;
 		boolean success = false;
-		
+
 		File file = new File(fileDirectory + "/" + namespace + "-" + filename);
 		System.out.println("[DSS] Ready to download " + file);
-		
+
 		try {
 			// Establish a connection to the url
 			fileUrl = new URL(url);
@@ -361,7 +361,7 @@ public class StorageNode extends Node {
 
 		return success;
 	}
-	
+
 	/**
 	 * Download a file from another DSS node
 	 * 
@@ -383,7 +383,7 @@ public class StorageNode extends Node {
 			System.out.println("[DSS] Invalid information for downloading file from DSS.");
 			return false;
 		}
-		
+
 		try {
 			// Connecting to the another DSS node
 			socket = new Socket(ip, requestPort);
@@ -396,7 +396,7 @@ public class StorageNode extends Node {
 			out.println(gson.toJson(request));
 			out.flush();
 			success = gson.fromJson(in.readLine(), Boolean.class);
-			
+
 			// Failed connecting to the DSS
 			if (!success) {
 				System.out.println("[DSS] Failed getting file from DSS:" + ip);
@@ -443,47 +443,48 @@ public class StorageNode extends Node {
 
 				DSSRequest request = gson.fromJson(in.readLine(), DSSRequest.class);
 				if (request != null) {
+					String filenameCombination = null;
 					System.out.println("[DSS] Received a " + request.getType() + " request");
 
-					if (request.getType().equals(DSSRequestType.DOWNLOAD)) {
-						String filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
+					switch (request.getType()) {
+					case DOWNLOAD:
+						filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
 						if (filenameCombination != null) {
 							response = downloadFile(filenameCombination.split("-")[0], filenameCombination.split("-")[1]);
-						}
-					} else if (request.getType().equals(DSSRequestType.DOWNLOADURL) && (request.getNote() != null)) {
-						String filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
-						if (filenameCombination != null) {
+						} break;
+					case DOWNLOADURL:
+						filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
+						if (request.getNote() != null && filenameCombination != null) {
 							response = downloadFromURL(
 									filenameCombination.split("-")[0], 
 									filenameCombination.split("-")[1],
 									request.getNote());
-						}
-					} else if (request.getType().equals(DSSRequestType.DOWNLOADDSS) && (request.getNote() != null)) {
-						String filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
-						if (filenameCombination != null) {
+						} break;
+					case DOWNLOADDSS:
+						filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
+						if (request.getNote() != null && filenameCombination != null) {
 							response = downloadFromDSS(
 									filenameCombination.split("-")[0], 
 									filenameCombination.split("-")[1],
 									request.getNote());
-						}
-					} else if (request.getType().equals(DSSRequestType.UPLOAD) && request.getNote() != null) {
-						String filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
-						if (filenameCombination != null) {
+						} break;
+					case UPLOAD:
+						filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
+						if (request.getNote() != null && filenameCombination != null) {
 							response = uploadFile(
 									filenameCombination.split("-")[0], 
 									filenameCombination.split("-")[1],
 									request.getNote());
-						}
-					} else if (request.getType().equals(DSSRequestType.GETFILE)) {
-						String downloader = request.getNodeId();
-						String filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
-						if (downloader != null && filenameCombination != null || !filenameCombination.isEmpty()) {
+						} break;
+					case GETFILE:
+						filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
+						if (request.getNodeId() != null && filenameCombination != null) {
 							response = uploadFile(
 									filenameCombination.split("-")[0], 
 									filenameCombination.split("-")[1],
-									downloader);
-						}
-					} else if (request.getType().equals(DSSRequestType.CACHE)) {
+									request.getNodeId());
+						} break;
+					case CACHE:
 						File file = new File(fileDirectory + "/" + request.getNamespace() + "-" + request.getFilename());
 						if (file.exists()) {
 							FileInputStream fis = new FileInputStream(file);
@@ -496,7 +497,9 @@ public class StorageNode extends Node {
 							fis.close();
 							response = true;
 							System.out.println("[DSS] Cached: " + cache.getKeys());
-						}
+						} break;
+					default:
+						System.out.println("[DSS] Invalid request: " + request.getType());
 					}
 				}
 				out.println(gson.toJson(response));

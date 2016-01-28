@@ -3,8 +3,8 @@ package edu.umn.cs.Nebula.fetcher;
 import java.util.HashMap;
 import java.util.Set;
 
-import edu.umn.cs.Nebula.model.ArticleKey;
-import edu.umn.cs.Nebula.model.ArticleTopic;
+import edu.umn.cs.Nebula.mobile.ArticleKey;
+import edu.umn.cs.Nebula.mobile.ArticleTopic;
 
 public interface ResourceFetcher {
 

@@ -18,7 +18,6 @@ import com.google.gson.reflect.TypeToken;
 
 import edu.umn.cs.Nebula.node.NodeInfo;
 import edu.umn.cs.Nebula.request.DSSRequest;
-import edu.umn.cs.Nebula.request.DSSRequestType;
 import edu.umn.cs.Nebula.request.NodeRequest;
 import edu.umn.cs.Nebula.request.NodeRequestType;
 
@@ -141,35 +140,36 @@ public class NebulaDSSMaster {
 				HashMap<String, NodeInfo> nodes = null;
 				boolean success = false;
 
-				if (request.getType().equals(DSSRequestType.GETNODE)) {
+				switch (request.getType()) {
+				case GETNODES:
 					// this message should be sent by the end-user
 					nodes = getNodes();
-					out.println(gson.toJson(nodes));
-				} else if (request.getType().equals(DSSRequestType.GETNODEWITHFILE)) {
+					out.println(gson.toJson(nodes)); break;
+				case GETNODESWITHFILE:
 					// this message should be sent by the end-user
 					if (request.getNamespace() != null && request.getFilename() != null) {
 						nodes = getStorageNodesWithFile(request.getNamespace(), request.getFilename());
 						out.println(gson.toJson(nodes));
-					}
-				} else if (request.getType().equals(DSSRequestType.NEW)) {
+					} break;
+				case NEW:
 					// this message should be sent by a storage node, notifying a new file has been stored in the node
 					if (request.getNamespace() != null && request.getFilename() != null && request.getNodeId() != null) {
 						success = newFile(request.getNamespace(), request.getFilename(), request.getNodeId());
 					}
-					out.println(gson.toJson(success));
-				} else if (request.getType().equals(DSSRequestType.DELETE)) {
+					out.println(gson.toJson(success)); break;
+				case DELETE:
 					// this message should be sent by a storage node, notifying a file has been deleted in the node
 					if (request.getNamespace() != null && request.getFilename() != null && request.getNodeId() != null) {
 						success = deleteFile(request.getNamespace(), request.getFilename(), request.getNodeId());
 					}
-					out.println(gson.toJson(success));
-				} else {
+					out.println(gson.toJson(success)); break;
+				default:
 					System.out.println("[DSSMaster] Invalid request: " + request.getType());
 					out.println(gson.toJson(success));
 				}
 				out.flush();
 			} catch (IOException e) {
-				System.err.println("Error: " + e);
+				System.err.println("[DSSMaster]: " + e);
 			} finally {
 				try {
 					if (in != null) in.close();

@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.server;
+package edu.umn.cs.Nebula.mobile;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -14,10 +14,8 @@ import java.util.concurrent.Executors;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import edu.umn.cs.Nebula.model.Location;
 import edu.umn.cs.Nebula.node.NodeInfo;
 import edu.umn.cs.Nebula.node.NodeType;
-import edu.umn.cs.Nebula.request.MobileRequest;
 import edu.umn.cs.Nebula.request.NodeRequest;
 import edu.umn.cs.Nebula.request.NodeRequestType;
 

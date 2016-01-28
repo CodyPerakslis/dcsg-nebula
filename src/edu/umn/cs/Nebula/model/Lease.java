@@ -1,21 +1,13 @@
 package edu.umn.cs.Nebula.model;
 
-import java.util.Date;
 
 public class Lease {
 	private String scheduler;
-	private Date expiredTime;
-	
-	public Lease(String scheduler, Date expiredTime) {
-		this.scheduler = scheduler;
-		this.setExpiredTime(expiredTime);
-	}
+	private long expiredTime;
 	
 	public Lease(String scheduler, long leaseTime) {
 		this.scheduler = scheduler;
-		Date expiry = new Date();
-		expiry.setTime(expiry.getTime() + leaseTime);
-		this.setExpiredTime(expiry);
+		this.expiredTime = System.currentTimeMillis() + leaseTime;
 	}
 
 	public String getScheduler() {
@@ -26,15 +18,20 @@ public class Lease {
 		this.scheduler = scheduler;
 	}
 
-	public Date getExpiredTime() {
+	public long getExpiredTime() {
 		return expiredTime;
 	}
 
-	public void setExpiredTime(Date expiredTime) {
+	public void setExpiredTime(long expiredTime) {
 		this.expiredTime = expiredTime;
 	}
 	
+	public long extendLease(long time) {
+		expiredTime += time;
+		return expiredTime;
+	}
+	
 	public long getRemainingTime() {
-		return new Date().getTime() - expiredTime.getTime();
+		return expiredTime - System.currentTimeMillis();
 	}
 }
