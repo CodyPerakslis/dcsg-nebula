@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.fetcher;
+package edu.umn.cs.Nebula.mobile;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -13,9 +13,6 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-
-import edu.umn.cs.Nebula.mobile.ArticleKey;
-import edu.umn.cs.Nebula.mobile.ArticleTopic;
 
 /**
  * @author albert
