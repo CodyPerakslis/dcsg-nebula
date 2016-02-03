@@ -22,7 +22,7 @@ import edu.umn.cs.Nebula.request.NodeRequestType;
 public class NebulaMobileServer {
 
 	private static final int port = 6425;
-	private static final int poolSize = 50;
+	private static final int poolSize = 10;
 	private static final int gridSize = 10;
 
 	private static HashMap<String, NodeInfo> storageNodes = new HashMap<String, NodeInfo>();
@@ -202,7 +202,7 @@ public class NebulaMobileServer {
 			while (true) {
 				BufferedReader in = null;
 				PrintWriter out = null;
-				Gson gson = new Gson(); 
+				Gson gson = new Gson();
 
 				try {
 					socket = new Socket(monitorUrl, monitorPort);

@@ -32,7 +32,7 @@ public class StorageNode extends Node {
 	private static final int bufferSize = 1024 * 64;
 	private static final int timeout = 10000;
 
-	private static final String masterUrl = "localhost";
+	private static final String masterUrl = "134.84.121.87";
 	private static final int masterPort = 6423;
 
 	private static LRUCache cache;
@@ -464,14 +464,6 @@ public class StorageNode extends Node {
 						filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
 						if (request.getNote() != null && filenameCombination != null) {
 							response = downloadFromDSS(
-									filenameCombination.split("-")[0], 
-									filenameCombination.split("-")[1],
-									request.getNote());
-						} break;
-					case UPLOAD:
-						filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
-						if (request.getNote() != null && filenameCombination != null) {
-							response = uploadFile(
 									filenameCombination.split("-")[0], 
 									filenameCombination.split("-")[1],
 									request.getNote());

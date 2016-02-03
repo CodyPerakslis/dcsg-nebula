@@ -98,6 +98,19 @@ public class ApplicationManager {
 	}
 
 	/**
+	 * Get a list of {incomplete} applications.
+	 * 
+	 * @param type
+	 * @param incomplete
+	 * @return
+	 */
+	private static ArrayList<Application> getApplications(ApplicationType type, boolean incomplete) {
+		// TODO get a list of {incomplete} applications 
+		
+		return null;
+	}
+	
+	/**
 	 * Cancel running application, change the 'active' value of the application into 0 (false).
 	 * 
 	 * @param request
@@ -162,9 +175,6 @@ public class ApplicationManager {
 			application.addJob(jobs.get(0));
 			application.addJob(jobs.get(1));
 			result = true;
-			break;
-		case MOBILE:
-			// TODO Handle mobile request
 			break;
 		default:
 			System.out.println("[AM] Undefined application type.");
@@ -294,6 +304,7 @@ public class ApplicationManager {
 
 		@Override
 		public void run() {
+			ArrayList<Application> applications = null;
 			BufferedReader in = null;
 			PrintWriter out = null;
 			Gson gson = new Gson();
@@ -308,12 +319,23 @@ public class ApplicationManager {
 				switch (request.getType()) {
 				case CREATE:
 					success = generateApplication(request);
+					out.println(gson.toJson(success));
 					break;
 				case CANCEL:
 					success = cancelApplication(request);
+					out.println(gson.toJson(success));
 					break;
 				case DELETE:
 					success = deleteApplication(request);
+					out.println(gson.toJson(success));
+					break;
+				case GET:
+					applications = getApplications(request.getApplicationType(), true);
+					out.println(gson.toJson(applications));
+					break;	
+				case GETALL:
+					applications = getApplications(request.getApplicationType(), false);
+					out.println(gson.toJson(applications));
 					break;
 				default:
 					System.out.println("[AM] Invalid request: " + request.getType());

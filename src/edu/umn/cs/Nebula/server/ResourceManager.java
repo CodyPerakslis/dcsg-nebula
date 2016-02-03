@@ -169,7 +169,6 @@ public class ResourceManager {
 
 		@Override
 		public void run() {
-			System.out.println("[RM] Getting nodes from " + monitorUrl);
 			while (true) {
 				BufferedReader in = null;
 				PrintWriter out = null;
