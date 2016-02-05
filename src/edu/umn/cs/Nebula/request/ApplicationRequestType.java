@@ -1,5 +1,5 @@
 package edu.umn.cs.Nebula.request;
 
 public enum ApplicationRequestType {
-	CREATE, CANCEL, DELETE, GETALL, GET
+	CREATE, CANCEL, DELETE, GETINACTIVEAPP, GETALLINACTIVEAPP, GET
 }

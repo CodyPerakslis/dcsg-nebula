@@ -8,7 +8,7 @@ import edu.umn.cs.Nebula.model.JobType;
 
 public class ApplicationRequest {
 	private ApplicationRequestType type;
-	private String applicationId;
+	private int applicationId;
 	private String applicationName;
 	private ApplicationType applicationType;
 	private ArrayList<String> fileList;
@@ -24,7 +24,7 @@ public class ApplicationRequest {
 		jobInputs = new HashMap<JobType, ArrayList<String>>();
 	}
 	
-	public ApplicationRequest(ApplicationRequestType type, String applicationId, String applicationName, ApplicationType applicationType) {
+	public ApplicationRequest(ApplicationRequestType type, int applicationId, String applicationName, ApplicationType applicationType) {
 		this.setType(type);
 		this.applicationId = applicationId;
 		this.applicationName = applicationName;
@@ -75,11 +75,11 @@ public class ApplicationRequest {
 		this.type = type;
 	}
 
-	public String getApplicationId() {
+	public int getApplicationId() {
 		return applicationId;
 	}
 
-	public void setApplicationId(String applicationId) {
+	public void setApplicationId(int applicationId) {
 		this.applicationId = applicationId;
 	}
 

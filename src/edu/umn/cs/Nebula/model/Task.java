@@ -4,21 +4,35 @@ import java.util.Date;
 
 public class Task {
 	private int id;
+	private int jobId;
 	private boolean active;
 	private boolean complete;
 	private Date postedTime;
 	private Date startTime;
 	private Date completedTime;
-	private Integer completedBy;
+	private String completedBy;
 	private String inputFile;
+	private String executableFile;
+	private String status;
 	
-	public Task(int id, String inputFile) {
+	public Task(int id, int jobId) {
 		this.id = id;
-		this.setInputFile(inputFile);
+		this.jobId = jobId;
 		active = true;
 		complete = false;
 		postedTime = new Date();
-		completedBy = -1;
+		completedBy = null;
+	}
+	
+	public Task(int id, int jobId, String inputFile, String executableFile) {
+		this.id = id;
+		this.jobId = jobId;
+		this.inputFile = inputFile;
+		this.executableFile = executableFile;
+		active = true;
+		complete = false;
+		postedTime = new Date();
+		completedBy = null;
 	}
 	
 	public int getId() {
@@ -58,11 +72,11 @@ public class Task {
 		return completedTime;
 	}
 
-	public void setCompletedBy(int nodeId) {
+	public void setCompletedBy(String nodeId) {
 		completedBy = nodeId;
 	}
 	
-	public int getCompletedBy() {
+	public String getCompletedBy() {
 		return completedBy;
 	}
 
@@ -72,5 +86,29 @@ public class Task {
 
 	public void setInputFile(String inputFile) {
 		this.inputFile = inputFile;
+	}
+
+	public String getExecutableFile() {
+		return executableFile;
+	}
+
+	public void setExecutableFile(String executableFile) {
+		this.executableFile = executableFile;
+	}
+
+	public int getJobId() {
+		return jobId;
+	}
+
+	public void setJobId(int jobId) {
+		this.jobId = jobId;
+	}
+
+	public String getStatus() {
+		return status;
+	}
+
+	public void setStatus(String status) {
+		this.status = status;
 	}
 }

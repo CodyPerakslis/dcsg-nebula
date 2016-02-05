@@ -20,8 +20,11 @@ import edu.umn.cs.Nebula.model.ApplicationType;
 import edu.umn.cs.Nebula.model.DatabaseConnector;
 import edu.umn.cs.Nebula.model.Job;
 import edu.umn.cs.Nebula.model.JobType;
+import edu.umn.cs.Nebula.model.Schedule;
 import edu.umn.cs.Nebula.model.Task;
 import edu.umn.cs.Nebula.request.ApplicationRequest;
+import edu.umn.cs.Nebula.request.ScheduleRequest;
+import edu.umn.cs.Nebula.request.TaskRequest;
 
 public class ApplicationManager {
 	// database configuration
@@ -31,10 +34,12 @@ public class ApplicationManager {
 	private static String dbName = "nebula";
 	private static int dbPort = 3307;
 	private static DatabaseConnector dbConn;
-	
+
+	private static Schedule schedule;
+	private static final Object scheduleLock = new Object();
+
 	private static final int port = 6421;
-	private static final int poolSize = 5;
-	
+	private static final int poolSize = 20;
 
 	public static void main(String args[]) {		
 		if (args.length < 5) {
@@ -46,7 +51,7 @@ public class ApplicationManager {
 			dbName = args[3];
 			dbPort = Integer.parseInt(args[4]);
 		}
-		
+
 		System.out.print("[AM] Setting up Database connection ...");	
 		dbConn = new DatabaseConnector(username, password, serverName, dbName, dbPort);
 		if (dbConn == null) {
@@ -55,10 +60,11 @@ public class ApplicationManager {
 		} else {
 			System.out.println("[OK]");
 		}
-		
+
+		schedule = new Schedule();
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
-		
+
 		try {
 			serverSock = new ServerSocket(port);
 			System.out.println("[AM] Listening for Application requests on port " + port);
@@ -104,12 +110,123 @@ public class ApplicationManager {
 	 * @param incomplete
 	 * @return
 	 */
-	private static ArrayList<Application> getApplications(ApplicationType type, boolean incomplete) {
-		// TODO get a list of {incomplete} applications 
-		
-		return null;
+	private static ArrayList<Integer> getApplicationIds(ApplicationType type, boolean complete) {
+		ArrayList<Integer> result = new ArrayList<Integer>();
+
+		ResultSet rs = dbConn.selectQuery("SELECT id FROM application WHERE type=" + type + ", AND complete=" + complete + ";");
+
+		try {
+			while (rs.next()) {
+				result.add(rs.getInt(1));
+			}
+		} catch (SQLException e) {
+			System.out.println("[AM] Failed getting application id: " + e);
+		}
+
+		return result;
 	}
-	
+
+	private static Application getApplication(int appId) {
+		Application app = null;
+
+		String appName;
+		ApplicationType type;
+		int priority;
+		boolean active;
+		boolean complete;
+		// Parse application info
+		ResultSet rs = dbConn.selectQuery("SELECT * FROM application WHERE id=" + appId + ";");
+		try {
+			while (rs.next()) {
+				// this should only go once since there should only be 1 element
+				appName = rs.getString("name");
+				type = ApplicationType.valueOf(rs.getString("type"));
+				priority = rs.getInt("priority");
+				active = rs.getBoolean("active");
+				complete = rs.getBoolean("complete");
+
+				app = new Application(appId, appName, type, priority);
+				app.setComplete(complete);
+				app.setActive(active);
+				break;
+			}
+		} catch (SQLException e) {
+			System.out.println("[AM] Failed getting application: " + e);
+			return null;
+		}
+
+		int jobId;
+		int depId;
+		JobType jobType;
+		String exeFilename;
+		String filename;
+		// Parse jobs info for the application
+		rs = dbConn.selectQuery("SELECT J.id, J.type, J.priority, J.active, J.complete, J.exefilename, JF.filename, D.dep_id"
+				+ " FROM job J, job_file JF, dependency D WHERE J.app_id=" + appId + " AND J.id = JF.id AND J.id = D.id;");
+		try {
+			while (rs.next()) {
+				jobId = rs.getInt("id");
+				jobType = JobType.valueOf(rs.getString("type"));
+				priority = rs.getInt("priority");
+				active = rs.getBoolean("active");
+				complete = rs.getBoolean("complete");
+				exeFilename = rs.getString("exe_filename");
+				filename = rs.getString("filename");
+				depId = rs.getInt("dep_id");
+
+				if (app.getJob(jobId) != null) {
+					if (!app.getJob(jobId).getFileList().contains(filename)) {
+						app.getJob(jobId).addFile(filename);;
+					}
+					if (!app.getJob(jobId).getDependencies().contains(depId)) {
+						app.getJob(jobId).addDependency(depId);
+					}
+				} else {
+					Job job = new Job(jobId, appId, priority, jobType);
+					job.setComplete(complete);
+					job.setActive(active);
+					job.setExeFile(exeFilename);
+					job.addFile(filename);
+					job.addDependency(depId);
+					app.addJob(job);
+				}
+			}
+		} catch (SQLException e) {
+			System.out.println("[AM] Failed getting jobs for application " + appId + ": " + e);
+			return null;
+		}
+
+		int taskId;
+		String completingNode;
+		String status;
+		// Parse tasks info for each job
+		for (int id: app.getJobs().keySet()) {
+			rs = dbConn.selectQuery("SELECT id, completing_node, active, complete, status"
+					+ " FROM task WHERE job_id =" + id + ";");
+			try {
+				while (rs.next()) {
+					taskId = rs.getInt("id");
+					active = rs.getBoolean("active");
+					complete = rs.getBoolean("complete");
+					completingNode = rs.getString("completingNode");
+					status = rs.getString("status");
+
+					Task task = new Task(taskId, id);
+					task.setActive(active);
+					task.setComplete(complete);
+					task.setCompletedBy(completingNode);
+					task.setStatus(status);
+					app.getJob(id).addTask(task);
+				}
+			} catch (SQLException e) {
+				System.out.println("[AM] Failed getting tasks for job " + id + ": " + e);
+				return null;
+			}
+		}
+
+		return app;
+	}
+
 	/**
 	 * Cancel running application, change the 'active' value of the application into 0 (false).
 	 * 
@@ -117,10 +234,11 @@ public class ApplicationManager {
 	 * @return
 	 */
 	private static boolean cancelApplication(ApplicationRequest request) {
-		if (request.getApplicationId() == null)
+		if (request.getApplicationId() < 0)
 			return false;
 
 		String sqlStatement = "UPDATE application SET active = " + 0 + " WHERE id = " + request.getApplicationId() + ";";
+
 		return dbConn.updateQuery(sqlStatement);
 	}
 
@@ -131,10 +249,11 @@ public class ApplicationManager {
 	 * @return
 	 */
 	private static boolean deleteApplication(ApplicationRequest request) {
-		if (request.getApplicationId() == null)
+		if (request.getApplicationId() < 0)
 			return false;
 
 		String sqlStatement = "DELETE FROM application WHERE id =" + request.getApplicationId() + ";";
+
 		return dbConn.updateQuery(sqlStatement);
 	}
 
@@ -218,7 +337,7 @@ public class ApplicationManager {
 				"VALUES (" + taskId + ", " + job.getId() + ", " + 1 + ", " + 0 + ", '" + new Date().toString() + "', '" + filename + "');");
 		dbConn.updateQuery("INSERT INTO job_file (id, filename) " +
 				"VALUES (" + job.getId() + ", '" + filename +"');");
-		return new Task(taskId, filename);
+		return new Task(taskId, job.getId(), filename, job.getExeFile());
 	}
 
 	/**
@@ -294,7 +413,52 @@ public class ApplicationManager {
 		jobs.add(redJob);
 		return jobs;
 	}
-	
+
+	private static void updateJob(int jobId) {
+		// check if all tasks for the job have been completed
+		String query = "SELECT COUNT(*) FROM task WHERE complete=0 AND job_id = " + jobId + ";";
+		ResultSet rs = dbConn.selectQuery(query);
+		try {
+			int numUnfinishedTasks = rs.getInt(1);
+			if (numUnfinishedTasks < 1) {
+				// set the job to be completed and activate any dependency jobs
+				query = "UPDATE job SET active=0, complete=1, last_modified=" + new Date().toString()
+						+ " WHERE id=" + jobId + ";";
+				dbConn.updateQuery(query);
+				query = "UPDATE job SET active=1, last_modified=" + new Date().toString()
+						+ " WHERE complete=0 AND active=0 AND id IN "
+						+ " (SELECT dep_id FROM dependency WHERE id=" + jobId + ";";
+				dbConn.updateQuery(query);
+
+				// get the application id and update it if all of its jobs are completed
+				query = "SELECT app_id FROM job WHERE id = " + jobId + ";";
+				rs = dbConn.selectQuery(query);
+				int appId = rs.getInt(1);			
+
+				updateApp(appId);
+			}
+		} catch (SQLException e) {
+			System.out.println("[AM] Failed updating job status: " + e);
+		}
+	}
+
+	private static void updateApp(int appId) {
+		// check if all jobs for the app have been completed
+		String query = "SELECT COUNT(*) FROM job WHERE complete=0 AND app_id = " + appId + ";";
+		ResultSet rs = dbConn.selectQuery(query);
+		try {
+			int numUnfinishedJobs = rs.getInt(1);
+			if (numUnfinishedJobs < 1) {
+				// set the job to be completed and activate any dependency jobs
+				query = "UPDATE app SET active=0, complete=1, last_modified=" + new Date().toString()
+						+ " WHERE id=" + appId + ";";
+				dbConn.updateQuery(query);
+			}
+		} catch (SQLException e) {
+			System.out.println("[AM] Failed updating app status: " + e);
+		}
+	}
+
 	private static class RequestThread implements Runnable {
 		private final Socket clientSock;
 
@@ -304,7 +468,7 @@ public class ApplicationManager {
 
 		@Override
 		public void run() {
-			ArrayList<Application> applications = null;
+			ArrayList<Integer> applicationIds = null;
 			BufferedReader in = null;
 			PrintWriter out = null;
 			Gson gson = new Gson();
@@ -313,34 +477,108 @@ public class ApplicationManager {
 				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
 				out = new PrintWriter(clientSock.getOutputStream());
 
-				ApplicationRequest request = gson.fromJson(in.readLine(), ApplicationRequest.class);
+				ApplicationRequest appRequest = gson.fromJson(in, ApplicationRequest.class);
+				TaskRequest taskRequest = gson.fromJson(in, TaskRequest.class);
+				ScheduleRequest scheduleRequest = gson.fromJson(in, ScheduleRequest.class);
+
 				boolean success = false;
 
-				switch (request.getType()) {
-				case CREATE:
-					success = generateApplication(request);
-					out.println(gson.toJson(success));
-					break;
-				case CANCEL:
-					success = cancelApplication(request);
-					out.println(gson.toJson(success));
-					break;
-				case DELETE:
-					success = deleteApplication(request);
-					out.println(gson.toJson(success));
-					break;
-				case GET:
-					applications = getApplications(request.getApplicationType(), true);
-					out.println(gson.toJson(applications));
-					break;	
-				case GETALL:
-					applications = getApplications(request.getApplicationType(), false);
-					out.println(gson.toJson(applications));
-					break;
-				default:
-					System.out.println("[AM] Invalid request: " + request.getType());
+				// Application request handler
+				if (appRequest != null && appRequest.getType() != null) {
+					switch (appRequest.getType()) {
+					case CREATE:
+						success = generateApplication(appRequest);
+						out.println(gson.toJson(success));
+						break;
+					case CANCEL:
+						success = cancelApplication(appRequest);
+						out.println(gson.toJson(success));
+						break;
+					case DELETE:
+						success = deleteApplication(appRequest);
+						out.println(gson.toJson(success));
+						break;
+					case GETINACTIVEAPP:
+						applicationIds = getApplicationIds(appRequest.getApplicationType(), false);
+						out.println(gson.toJson(applicationIds));
+						break;	
+					case GETALLINACTIVEAPP:
+						applicationIds = getApplicationIds(appRequest.getApplicationType(), false);
+						out.println(gson.toJson(applicationIds));
+						break;
+					case GET:
+						Application app = null;
+						if (appRequest.getApplicationId() >= 0) {
+							app = getApplication(appRequest.getApplicationId());
+						}
+						out.println(gson.toJson(app));
+						break;
+					default:
+						System.out.println("[AM] Invalid request: " + appRequest.getType());
+						out.println(gson.toJson(success));
+					}
+				} 
+				// Task request handler
+				else if (taskRequest != null && taskRequest.getType() != null && taskRequest.getNodeId() != null) {
+					Task task = null;
+					boolean removed = false;
+
+					switch (taskRequest.getType()) {
+					case GET:	// get a task that is scheduled for the node, if any.
+						synchronized(scheduleLock) {
+							task = schedule.getFirstTask(taskRequest.getNodeId());
+						}
+						out.println(gson.toJson(task));
+						break;
+					case CANCEL:
+						synchronized(scheduleLock) {
+							removed = schedule.removeTask(taskRequest.getNodeId(), taskRequest.getTaskId());
+						}
+						out.println(gson.toJson(removed));
+						break;
+					case FINISH:	// update the status of a task
+						if (taskRequest.getTaskId() >= 0) {					
+							// update the task info in the DB
+							String sqlStatement = "UPDATE task "
+									+ "SET active=0, complete=1, completing_node=" + taskRequest.getNodeId()
+									+ ", status= " +taskRequest.getStatus() + ", last_modified=" + new Date().toString()
+									+ "WHERE id = " + taskRequest.getTaskId() + ";";
+							removed = dbConn.updateQuery(sqlStatement);
+
+							synchronized(scheduleLock) {
+								// remove the task from the schedule
+								schedule.removeTask(taskRequest.getNodeId(), taskRequest.getTaskId());
+							}
+
+							sqlStatement = "SELECT job_id FROM task WHERE id = " + taskRequest.getTaskId() + ";";
+							ResultSet rs = dbConn.selectQuery(sqlStatement);
+							try {
+								int jobId = rs.getInt(1);
+								updateJob(jobId);
+							} catch (SQLException e) {
+								System.out.println("[AM] Failed getting job id: " + e);
+							}
+						}
+						out.println(gson.toJson(removed));
+						break;
+					default:
+						System.out.println("[AM] Invalid request: " + taskRequest.getType());
+						out.println(gson.toJson(success));
+					}
+				} 
+				// Schedule request handler
+				else if (scheduleRequest != null && scheduleRequest.getNodeTask() != null && !scheduleRequest.getNodeTask().isEmpty()) {
+					synchronized(scheduleLock) {
+						for (String nodeId: scheduleRequest.getNodeTask().keySet()) {
+							schedule.addTask(nodeId, scheduleRequest.getNodeTask().get(nodeId));
+						}
+					}
+					out.println(gson.toJson(true));
+				} else {
+					System.out.println("[AM] Invalid request. ");
 					out.println(gson.toJson(success));
 				}
+
 				out.flush();
 			} catch (IOException e) {
 				System.err.println("[AM]: " + e);
