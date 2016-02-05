@@ -6,6 +6,11 @@ public class TaskRequest {
 	private TaskRequestType requestType;
 	private String status;
 	
+	public TaskRequest(TaskRequestType type, String nodeId) {
+		this.requestType = type;
+		this.nodeId = nodeId;
+	}
+	
 	public TaskRequest(TaskRequestType type, String nodeId, int taskId) {
 		this.requestType = type;
 		this.nodeId = nodeId;

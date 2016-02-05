@@ -476,15 +476,16 @@ public class ApplicationManager {
 			try {
 				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
 				out = new PrintWriter(clientSock.getOutputStream());
-
-				ApplicationRequest appRequest = gson.fromJson(in, ApplicationRequest.class);
-				TaskRequest taskRequest = gson.fromJson(in, TaskRequest.class);
-				ScheduleRequest scheduleRequest = gson.fromJson(in, ScheduleRequest.class);
-
+				String input = in.readLine();
+				
+				ApplicationRequest appRequest = gson.fromJson(input, ApplicationRequest.class);
+				TaskRequest taskRequest = gson.fromJson(input, TaskRequest.class);
+				ScheduleRequest scheduleRequest = gson.fromJson(input, ScheduleRequest.class);
 				boolean success = false;
 
 				// Application request handler
 				if (appRequest != null && appRequest.getType() != null) {
+					System.out.println("[AM] Received an application request: " + appRequest.getType());
 					switch (appRequest.getType()) {
 					case CREATE:
 						success = generateApplication(appRequest);
@@ -520,6 +521,7 @@ public class ApplicationManager {
 				} 
 				// Task request handler
 				else if (taskRequest != null && taskRequest.getType() != null && taskRequest.getNodeId() != null) {
+					System.out.println("[AM] Received a task request: " + taskRequest.getType());
 					Task task = null;
 					boolean removed = false;
 
