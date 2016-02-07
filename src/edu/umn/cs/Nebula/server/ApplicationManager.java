@@ -28,8 +28,8 @@ import edu.umn.cs.Nebula.request.TaskRequest;
 
 public class ApplicationManager {
 	// database configuration
-	private static String username = "dcsg";
-	private static String password = "dcsgumn";
+	private static String username = "nebula";
+	private static String password = "kvm";
 	private static String serverName = "localhost";
 	private static String dbName = "nebula";
 	private static int dbPort = 3307;

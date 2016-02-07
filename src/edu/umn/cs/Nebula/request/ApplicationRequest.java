@@ -11,17 +11,17 @@ public class ApplicationRequest {
 	private int applicationId;
 	private String applicationName;
 	private ApplicationType applicationType;
-	private ArrayList<String> fileList;
 	private HashMap<JobType, String> jobExecutable;
 	private HashMap<JobType, ArrayList<String>> jobInputs;
+	private HashMap<JobType, Integer> jobWorkers;
 	
 	public ApplicationRequest(ApplicationRequestType type, String applicationName, ApplicationType applicationType) {
 		this.setType(type);
 		this.applicationName = applicationName;
 		this.setApplicationType(applicationType);
-		fileList = new ArrayList<String>();
 		jobExecutable = new HashMap<JobType, String>();
 		jobInputs = new HashMap<JobType, ArrayList<String>>();
+		jobWorkers = new HashMap<JobType, Integer>();
 	}
 	
 	public ApplicationRequest(ApplicationRequestType type, int applicationId, String applicationName, ApplicationType applicationType) {
@@ -29,9 +29,9 @@ public class ApplicationRequest {
 		this.applicationId = applicationId;
 		this.applicationName = applicationName;
 		this.setApplicationType(applicationType);
-		fileList = new ArrayList<String>();
 		jobExecutable = new HashMap<JobType, String>();
 		jobInputs = new HashMap<JobType, ArrayList<String>>();
+		jobWorkers = new HashMap<JobType, Integer>();
 	}
 	
 	public String getApplicationName() {
@@ -50,23 +50,23 @@ public class ApplicationRequest {
 		this.applicationType = applicationType;
 	}
 
-	public ArrayList<String> getFileList() {
-		return fileList;
-	}
-
-	public void setFileList(ArrayList<String> fileList) {
-		this.fileList = fileList;
+	public void addFile(JobType type, String filename) {
+		jobInputs.get(type).add(filename);
 	}
 	
-	public void addFile(String filename) {
-		fileList.add(filename);
-	}
-	
-	public int removeFile(String filename) {
-		fileList.remove(filename);
-		return fileList.size();
+	public int removeFile(JobType type, String filename) {
+		jobInputs.get(type).remove(filename);
+		return jobInputs.get(type).size();
 	}
 
+	public void setWorker(JobType type, int numWorkers) {
+		jobWorkers.put(type, numWorkers);
+	}
+	
+	public void clearWorker(JobType type) {
+		jobWorkers.clear();
+	}
+	
 	public ApplicationRequestType getType() {
 		return type;
 	}
