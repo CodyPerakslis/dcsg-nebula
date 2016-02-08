@@ -18,6 +18,8 @@ CREATE TABLE job (
 	complete tinyint,
 	exe_filename varchar(30) not null,
 	last_modified varchar(30),
+	num_nodes int unsigned,
+	priority int unsigned,
 	PRIMARY KEY (id),
 	FOREIGN KEY (app_id) REFERENCES application(id) ON DELETE CASCADE
 );

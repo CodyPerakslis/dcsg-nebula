@@ -59,11 +59,15 @@ public class ApplicationRequest {
 		return jobInputs.get(type).size();
 	}
 
-	public void setWorker(JobType type, int numWorkers) {
+	public void setWorkers(JobType type, int numWorkers) {
 		jobWorkers.put(type, numWorkers);
 	}
 	
-	public void clearWorker(JobType type) {
+	public int getNumWorkers(JobType type) {
+		return jobWorkers.get(type);
+	}
+	
+	public void clearWorkers(JobType type) {
 		jobWorkers.clear();
 	}
 	

@@ -32,7 +32,7 @@ public class ApplicationManager {
 	private static String password = "kvm";
 	private static String serverName = "localhost";
 	private static String dbName = "nebula";
-	private static int dbPort = 3307;
+	private static int dbPort = 3306;
 	private static DatabaseConnector dbConn;
 
 	private static Schedule schedule;
@@ -161,7 +161,7 @@ public class ApplicationManager {
 		String exeFilename;
 		String filename;
 		// Parse jobs info for the application
-		rs = dbConn.selectQuery("SELECT J.id, J.type, J.priority, J.active, J.complete, J.exefilename, JF.filename, D.dep_id"
+		rs = dbConn.selectQuery("SELECT J.id, J.type, J.priority, J.active, J.complete, J.exe_filename, JF.filename, D.dep_id"
 				+ " FROM job J, job_file JF, dependency D WHERE J.app_id=" + appId + " AND J.id = JF.id AND J.id = D.id;");
 		try {
 			while (rs.next()) {
@@ -237,8 +237,10 @@ public class ApplicationManager {
 		if (request.getApplicationId() < 0)
 			return false;
 
-		String sqlStatement = "UPDATE application SET active = " + 0 + " WHERE id = " + request.getApplicationId() + ";";
-
+		String sqlStatement = "UPDATE application SET active = " + 0
+			+ " WHERE id =" + request.getApplicationId()
+			+ " AND name ='" + request.getApplicationName() + "'"
+			+ " AND type ='" + request.getApplicationType() + "';";
 		return dbConn.updateQuery(sqlStatement);
 	}
 
@@ -252,8 +254,10 @@ public class ApplicationManager {
 		if (request.getApplicationId() < 0)
 			return false;
 
-		String sqlStatement = "DELETE FROM application WHERE id =" + request.getApplicationId() + ";";
-
+		String sqlStatement = "DELETE FROM application "
+				+ " WHERE id =" + request.getApplicationId()
+				+ " AND name ='" + request.getApplicationName() + "'"
+				+ " AND type ='" + request.getApplicationType() + "';";
 		return dbConn.updateQuery(sqlStatement);
 	}
 
@@ -264,8 +268,9 @@ public class ApplicationManager {
 	 * @return
 	 */
 	private static boolean generateApplication(ApplicationRequest request) {
-		boolean result = false;
+		boolean success = false;
 		ArrayList<Job> jobs;
+		Job job;
 		int id = getNewId("application");
 
 		if (id < 0) {
@@ -276,28 +281,52 @@ public class ApplicationManager {
 		ApplicationType applicationType = request.getApplicationType();
 
 		Application application = new Application(id, name, applicationType);
+		
 		String sqlStatement = "INSERT INTO application (id, name, priority, active, complete, last_modified, type) " +
 				"VALUES (" + id + ", '" + name + "', " + application.getPriority() + ", " + 
 				1 + ", " + 0 + ", '" + new Date().toString() + "', '" + applicationType + "');";
 
 		if (!dbConn.updateQuery(sqlStatement)) {
 			System.out.println("[AM] Failed creating a new application.");
-			return result;
+			return success;
 		}
 
 		switch (applicationType) {
 		case MAPREDUCE:
 			jobs = createMapReduceJobs(request, id, application.getPriority());
 			if (jobs == null || jobs.size() < 2) {
-				return result;
+				System.out.println("[AM] Failed creating MAPREDUCE jobs.");
+				return success;
 			}
 			application.addJob(jobs.get(0));
 			application.addJob(jobs.get(1));
-			result = true;
+			success = true;
+			break;
+		case MOBILECACHING:
+			// TODO create a job or just leave the application as is?
+			job = createCacheJob(request, id, application.getPriority());
+			if (job == null) {
+				System.out.println("[AM] Failed creating a CACHE job.");
+				return success;
+			}
+			application.addJob(job);
+			success = true;
 			break;
 		default:
 			System.out.println("[AM] Undefined application type.");
+			return false;
 		}
+		
+		int num_nodes = 0;
+		for (Job temp: application.getJobs().values()) {
+			num_nodes += temp.getNumNodes();
+		}
+		
+		sqlStatement = "UPDATE application SET num_nodes = " + num_nodes + " WHERE id =" + application.getId() + ";";
+		if (!dbConn.updateQuery(sqlStatement)) {
+			System.out.println("[AM] Failed updating number of nodes.");
+		}
+		
 		return true;
 	}
 
@@ -333,11 +362,48 @@ public class ApplicationManager {
 			taskId = 1;
 		}
 
-		dbConn.updateQuery("INSERT INTO task (id, job_id, active, complete, last_modified, filename) " +
-				"VALUES (" + taskId + ", " + job.getId() + ", " + 1 + ", " + 0 + ", '" + new Date().toString() + "', '" + filename + "');");
-		dbConn.updateQuery("INSERT INTO job_file (id, filename) " +
-				"VALUES (" + job.getId() + ", '" + filename +"');");
+		dbConn.updateQuery("INSERT INTO task (id, job_id, active, complete, last_modified) " +
+				"VALUES (" + taskId + ", " + job.getId() + ", " + 1 + ", " + 0 + ", '" + new Date().toString() + "');");
+		if (filename != null) {
+			dbConn.updateQuery("INSERT INTO job_file (id, filename) " +
+					"VALUES (" + job.getId() + ", '" + filename +"');");
+		}
 		return new Task(taskId, job.getId(), filename, job.getExeFile());
+	}
+	
+	private static Job createCacheJob(ApplicationRequest request, int applicationId, int priority) {
+		boolean successQuery = false;
+		Job job = null;
+
+		// Create the MAP job
+		int jobId = getNewId("job");
+		if (jobId < 0) {
+			jobId = 1;
+		}
+		
+		String exe = request.getJobExecutable(JobType.CACHE);
+		int numNodes = request.getNumWorkers(JobType.CACHE);
+		
+		if (exe == null) {
+			System.out.println("[CACHE] Failed creating a CACHE job.");
+			return null;
+		}
+		
+		job = generateJob(jobId, applicationId, priority, JobType.CACHE, exe, numNodes);
+		// Save the job to the Database
+		successQuery = dbConn.updateQuery("INSERT INTO job (id, type, app_id, active, complete, exe_filename, last_modified, num_nodes, priority) " +
+				"VALUES (" + jobId + ", '" + JobType.CACHE + "', " + applicationId + ", " + 1 + ", " + 0 + ", '" +
+				exe + "', '" + new Date().toString() + "', " + numNodes + ", " + priority + ");");
+		if (!successQuery) {
+			System.out.println("[CACHE] Failed saving a CACHE job.");
+			return null;
+		}
+		// Create CACHE tasks
+		for (int i = 0; i < numNodes; i++) {
+			job.addTask(generateTask(job, null));
+		}
+		
+		return job;
 	}
 
 	/**
@@ -360,16 +426,17 @@ public class ApplicationManager {
 
 		String mapExe = request.getJobExecutable(JobType.MAP);
 		ArrayList<String> mapInputs = request.getJobInputs(JobType.MAP);
+		int numNodes = Math.min(request.getNumWorkers(JobType.MAP), mapInputs.size());
 
 		if (mapExe == null || mapInputs == null || mapInputs.size() < 1) {
 			System.out.println("[MR] Failed creating a MAP job.");
 			return null;
 		}
-		Job mapJob = generateJob(mapJobId, applicationId, priority, JobType.MAP, mapExe, mapInputs.size());
+		Job mapJob = generateJob(mapJobId, applicationId, priority, JobType.MAP, mapExe, numNodes);
 		// Save the job to the Database
-		successQuery = dbConn.updateQuery("INSERT INTO job (id, type, app_id, active, complete, exe_filename, last_modified, num_nodes) " +
+		successQuery = dbConn.updateQuery("INSERT INTO job (id, type, app_id, active, complete, exe_filename, last_modified, num_nodes, priority) " +
 				"VALUES (" + mapJobId + ", '" + JobType.MAP + "', " + applicationId + ", " + 1 + ", " + 0 + ", '" +
-				mapExe + "', '" + new Date().toString() + "', " + mapInputs.size() + ");");
+				mapExe + "', '" + new Date().toString() + "', " + numNodes + ", " + priority + ");");
 		if (!successQuery) {
 			System.out.println("[MR] Failed saving a MAP job.");
 			return null;
@@ -388,17 +455,18 @@ public class ApplicationManager {
 
 		String redExe = request.getJobExecutable(JobType.REDUCE);
 		ArrayList<String> redInputs = request.getJobInputs(JobType.REDUCE);
+		numNodes = Math.min(request.getNumWorkers(JobType.REDUCE), redInputs.size());
 
 		if (redExe == null || redInputs == null || redInputs.size() < 1) {
 			System.out.println("[MR] Failed creating a REDUCE job.");
 			return null;
 		}
-		Job redJob = generateJob(redJobId, applicationId, priority, JobType.REDUCE, redExe, redInputs.size());
+		Job redJob = generateJob(redJobId, applicationId, priority, JobType.REDUCE, redExe, numNodes);
 		redJob.addDependency(mapJobId);
 		// Save the job to the Database
-		successQuery = dbConn.updateQuery("INSERT INTO job (id, type, app_id, active, complete, exe_filename, last_modified, num_nodes) " +
+		successQuery = dbConn.updateQuery("INSERT INTO job (id, type, app_id, active, complete, exe_filename, last_modified, num_nodes, priority) " +
 				"VALUES (" + redJobId + ", '" + JobType.REDUCE + "', " + applicationId + ", " + 0 + ", " + 0 + ", '" +
-				redExe + "', '" + new Date().toString() + "', " + redInputs.size() + ");");
+				redExe + "', '" + new Date().toString() + "', " + numNodes + ", " + priority + ");");
 		if (!successQuery) {
 			System.out.println("[MR] Failed saving a REDUCE job.");
 			return null;
