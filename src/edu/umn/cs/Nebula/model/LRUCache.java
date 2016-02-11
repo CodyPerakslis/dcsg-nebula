@@ -1,22 +1,22 @@
-package edu.umn.cs.Nebula.cache;
+package edu.umn.cs.Nebula.model;
 
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 
-public class LRUCache {
+public class LRUCache<E> {
 	
 	private final int maxSize;
-	private LinkedList<String> index;
-	private HashMap<String, Object> data;
+	private LinkedList<E> index;
+	private HashMap<E, Object> data;
 	
 	public LRUCache(int size) {
 		maxSize = size;
-		index = new LinkedList<String>();
-		data = new HashMap<String, Object>();
+		index = new LinkedList<E>();
+		data = new HashMap<E, Object>();
 	}
 	
-	public void add(String key, Object value) {
+	public void add(E key, Object value) {
 		if (!data.containsKey(key)) {
 			if (index.size() == maxSize) {
 				removeOldest();
@@ -28,21 +28,27 @@ public class LRUCache {
 		data.put(key, value);
 	}
 	
-	public Object remove(String key) {
+	public Object remove(E key) {
 		index.remove(key);
 		return data.remove(key);
 	}
 	
+	public Object get(E key) {
+		index.remove(key);
+		index.addLast(key);
+		return data.get(key);
+	}
+	
 	public Object removeOldest() {
-		String removedKey = index.removeFirst();
+		E removedKey = index.removeFirst();
 		return data.remove(removedKey);
 	}
 	
-	public boolean containsKey(String key) {
+	public boolean containsKey(E key) {
 		return data.containsKey(key);
 	}
 	
-	public List<String> getKeys() {
+	public List<E> getKeys() {
 		return index;
 	}
 }

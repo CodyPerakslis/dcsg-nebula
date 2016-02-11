@@ -22,7 +22,7 @@ public abstract class Node {
 	private static class PingThread implements Runnable {
 		private final String monitorUrl;
 		private final NodeType type;
-		private final int pingInterval = 5000;
+		private final int pingInterval = 3000; // in milliseconds
 		
 		private PingThread(String monitorUrl, NodeType type) {
 			this.monitorUrl = monitorUrl;

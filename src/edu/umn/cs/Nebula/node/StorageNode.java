@@ -19,7 +19,7 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.Nebula.cache.LRUCache;
+import edu.umn.cs.Nebula.model.LRUCache;
 import edu.umn.cs.Nebula.request.DSSRequest;
 import edu.umn.cs.Nebula.request.DSSRequestType;
 
@@ -34,20 +34,14 @@ public class StorageNode extends Node {
 
 	private static final String masterUrl = "134.84.121.87";
 	private static final int masterPort = 6423;
+	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/WebInterface";
 
-	private static LRUCache cache;
+	private static LRUCache<String> cache;
+	private static final int cacheSize = 20;
 
 	public static void main(String args[]) {
-		if (args.length < 2) {
-			System.out.println("[DSS] Invalid arguments: NebulaURL, CacheSize");
-			return;
-		}
-
-		String nebulaUrl = args[0];
 		connect(nebulaUrl, NodeType.STORAGE);
-
-		int cacheSize = Integer.parseInt(args[1]);
-		cache = new LRUCache(cacheSize);
+		cache = new LRUCache<String>(cacheSize);
 
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
