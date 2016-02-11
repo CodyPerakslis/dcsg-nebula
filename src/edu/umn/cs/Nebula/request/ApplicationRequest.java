@@ -3,8 +3,8 @@ package edu.umn.cs.Nebula.request;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-import edu.umn.cs.Nebula.model.ApplicationType;
-import edu.umn.cs.Nebula.model.JobType;
+import edu.umn.cs.Nebula.application.ApplicationType;
+import edu.umn.cs.Nebula.application.JobType;
 
 public class ApplicationRequest {
 	private ApplicationRequestType type;
