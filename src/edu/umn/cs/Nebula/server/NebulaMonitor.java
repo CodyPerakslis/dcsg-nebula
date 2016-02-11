@@ -18,8 +18,8 @@ import edu.umn.cs.Nebula.node.NodeType;
 import edu.umn.cs.Nebula.request.NodeRequest;
 
 public class NebulaMonitor {
-	private static final long maxInactive = 10000; // 10 seconds
-	private static final int updateInterval = 2000; // 5 seconds
+	private static final long maxInactive = 5000; // in milliseconds
+	private static final int updateInterval = 2000; // in milliseconds
 	private static final int port = 6422;
 	private static final int poolSize = 30;
 
@@ -147,6 +147,7 @@ public class NebulaMonitor {
 					case OFFLINE:
 						// handle heartbeat from a node
 						NodeInfo node = handleHeartbeat(nodeRequest);
+						System.out.println("[MONITOR] Node:" + node.getIp() + ", lat=" + node.getLatitude() + ", lon=" + node.getLongitude());
 						out.println(gson.toJson(node));
 						break;
 					case COMPUTE:

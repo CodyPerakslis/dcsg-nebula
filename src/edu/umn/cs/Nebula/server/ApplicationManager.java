@@ -15,13 +15,13 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.Nebula.model.Application;
-import edu.umn.cs.Nebula.model.ApplicationType;
+import edu.umn.cs.Nebula.application.Application;
+import edu.umn.cs.Nebula.application.ApplicationType;
+import edu.umn.cs.Nebula.application.Job;
+import edu.umn.cs.Nebula.application.JobType;
+import edu.umn.cs.Nebula.application.Task;
 import edu.umn.cs.Nebula.model.DatabaseConnector;
-import edu.umn.cs.Nebula.model.Job;
-import edu.umn.cs.Nebula.model.JobType;
 import edu.umn.cs.Nebula.model.Schedule;
-import edu.umn.cs.Nebula.model.Task;
 import edu.umn.cs.Nebula.request.ApplicationRequest;
 import edu.umn.cs.Nebula.request.ScheduleRequest;
 import edu.umn.cs.Nebula.request.TaskRequest;
@@ -52,7 +52,8 @@ public class ApplicationManager {
 			dbPort = Integer.parseInt(args[4]);
 		}
 
-		System.out.print("[AM] Setting up Database connection ...");	
+		// Setup the database connection
+		System.out.print("[AM] Connecting to the database ...");	
 		dbConn = new DatabaseConnector(username, password, serverName, dbName, dbPort);
 		if (dbConn == null) {
 			System.out.println("[FAILED]");
@@ -61,10 +62,12 @@ public class ApplicationManager {
 			System.out.println("[OK]");
 		}
 
+		// A list of tasks for each node
 		schedule = new Schedule();
+		
+		// Setup thread list to handle application requests
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
-
 		try {
 			serverSock = new ServerSocket(port);
 			System.out.println("[AM] Listening for Application requests on port " + port);
@@ -86,8 +89,10 @@ public class ApplicationManager {
 	}
 
 	/**
-	 * Get a new id for a new application.
-	 * @param tablename
+	 * Get a new id for a new application/job/task.
+	 * This method is called when generating a new application/job/task.
+	 * 
+	 * @param tablename (application/job/task)
 	 * @return
 	 */
 	private static int getNewId(String tablename) {
@@ -104,28 +109,34 @@ public class ApplicationManager {
 	}
 
 	/**
-	 * Get a list of {incomplete} applications.
+	 * Get a list of {incomplete} application ids of a specific type.
 	 * 
-	 * @param type
-	 * @param incomplete
+	 * @param type			Application type
+	 * @param incomplete	
 	 * @return
 	 */
 	private static ArrayList<Integer> getApplicationIds(ApplicationType type, boolean complete) {
 		ArrayList<Integer> result = new ArrayList<Integer>();
 
 		ResultSet rs = dbConn.selectQuery("SELECT id FROM application WHERE type=" + type + ", AND complete=" + complete + ";");
-
 		try {
 			while (rs.next()) {
 				result.add(rs.getInt(1));
 			}
 		} catch (SQLException e) {
-			System.out.println("[AM] Failed getting application id: " + e);
+			System.out.println("[AM] Failed getting an application with id: " + e);
 		}
-
 		return result;
 	}
 
+	/**
+	 * Get an application object specified by its id.
+	 * This will construct an application object along with all of its jobs,
+	 * and all tasks of each of the jobs.
+	 * 
+	 * @param appId
+	 * @return
+	 */
 	private static Application getApplication(int appId) {
 		Application app = null;
 
@@ -134,11 +145,12 @@ public class ApplicationManager {
 		int priority;
 		boolean active;
 		boolean complete;
-		// Parse application info
+		
+		// Get the application information from the database
 		ResultSet rs = dbConn.selectQuery("SELECT * FROM application WHERE id=" + appId + ";");
 		try {
 			while (rs.next()) {
-				// this should only go once since there should only be 1 element
+				// this should only go once since there should only be 1 application with 1 id
 				appName = rs.getString("name");
 				type = ApplicationType.valueOf(rs.getString("type"));
 				priority = rs.getInt("priority");
@@ -151,7 +163,7 @@ public class ApplicationManager {
 				break;
 			}
 		} catch (SQLException e) {
-			System.out.println("[AM] Failed getting application: " + e);
+			System.out.println("[AM] Failed getting an application of id " + appId + ": " + e);
 			return null;
 		}
 
@@ -160,7 +172,7 @@ public class ApplicationManager {
 		JobType jobType;
 		String exeFilename;
 		String filename;
-		// Parse jobs info for the application
+		// Get all of the applicaiton's job information
 		rs = dbConn.selectQuery("SELECT J.id, J.type, J.priority, J.active, J.complete, J.exe_filename, JF.filename, D.dep_id"
 				+ " FROM job J, job_file JF, dependency D WHERE J.app_id=" + appId + " AND J.id = JF.id AND J.id = D.id;");
 		try {
@@ -175,13 +187,15 @@ public class ApplicationManager {
 				depId = rs.getInt("dep_id");
 
 				if (app.getJob(jobId) != null) {
+					// add any file or dependency information to a job
 					if (!app.getJob(jobId).getFileList().contains(filename)) {
-						app.getJob(jobId).addFile(filename);;
+						app.getJob(jobId).addFile(filename);
 					}
 					if (!app.getJob(jobId).getDependencies().contains(depId)) {
 						app.getJob(jobId).addDependency(depId);
 					}
 				} else {
+					// add the job object to the application
 					Job job = new Job(jobId, appId, priority, jobType);
 					job.setComplete(complete);
 					job.setActive(active);
@@ -192,14 +206,14 @@ public class ApplicationManager {
 				}
 			}
 		} catch (SQLException e) {
-			System.out.println("[AM] Failed getting jobs for application " + appId + ": " + e);
+			System.out.println("[AM] Failed getting jobs for an application with id " + appId + ": " + e);
 			return null;
 		}
 
 		int taskId;
 		String completingNode;
 		String status;
-		// Parse tasks info for each job
+		// Get all tasks for each of the job
 		for (int id: app.getJobs().keySet()) {
 			rs = dbConn.selectQuery("SELECT id, completing_node, active, complete, status"
 					+ " FROM task WHERE job_id =" + id + ";");
@@ -219,7 +233,7 @@ public class ApplicationManager {
 					app.getJob(id).addTask(task);
 				}
 			} catch (SQLException e) {
-				System.out.println("[AM] Failed getting tasks for job " + id + ": " + e);
+				System.out.println("[AM] Failed getting tasks for a job with id " + id + ": " + e);
 				return null;
 			}
 		}
@@ -228,10 +242,10 @@ public class ApplicationManager {
 	}
 
 	/**
-	 * Cancel running application, change the 'active' value of the application into 0 (false).
+	 * Cancel an application, change the 'active' value of the application into 0 (false).
 	 * 
 	 * @param request
-	 * @return
+	 * @return application is successfully canceled 
 	 */
 	private static boolean cancelApplication(ApplicationRequest request) {
 		if (request.getApplicationId() < 0)
@@ -248,7 +262,7 @@ public class ApplicationManager {
 	 * Remove a specific application from the database.
 	 * 
 	 * @param request
-	 * @return
+	 * @return 	application is successfully deleted 
 	 */
 	private static boolean deleteApplication(ApplicationRequest request) {
 		if (request.getApplicationId() < 0)
@@ -262,10 +276,12 @@ public class ApplicationManager {
 	}
 
 	/**
-	 * Add a new application into the database.
+	 * Generate a new application into the database.
+	 * This will also generate each jobs for the application along with 
+	 * the dependency information and tasks for the job.
 	 * 
 	 * @param request
-	 * @return
+	 * @return	whether the application was successfully created
 	 */
 	private static boolean generateApplication(ApplicationRequest request) {
 		boolean success = false;
@@ -279,23 +295,23 @@ public class ApplicationManager {
 
 		String name = request.getApplicationName();
 		ApplicationType applicationType = request.getApplicationType();
-
 		Application application = new Application(id, name, applicationType);
 		
+		// Insert the application information
 		String sqlStatement = "INSERT INTO application (id, name, priority, active, complete, last_modified, type) " +
 				"VALUES (" + id + ", '" + name + "', " + application.getPriority() + ", " + 
 				1 + ", " + 0 + ", '" + new Date().toString() + "', '" + applicationType + "');";
-
 		if (!dbConn.updateQuery(sqlStatement)) {
 			System.out.println("[AM] Failed creating a new application.");
 			return success;
 		}
 
+		// Depending of the type of the application, create the corresponding jobs
 		switch (applicationType) {
 		case MAPREDUCE:
 			jobs = createMapReduceJobs(request, id, application.getPriority());
 			if (jobs == null || jobs.size() < 2) {
-				System.out.println("[AM] Failed creating MAPREDUCE jobs.");
+				System.out.println("[AM] Failed creating a MAPREDUCE jobs.");
 				return success;
 			}
 			application.addJob(jobs.get(0));
@@ -303,7 +319,6 @@ public class ApplicationManager {
 			success = true;
 			break;
 		case MOBILECACHING:
-			// TODO create a job or just leave the application as is?
 			job = createCacheJob(request, id, application.getPriority());
 			if (job == null) {
 				System.out.println("[AM] Failed creating a CACHE job.");
@@ -322,6 +337,7 @@ public class ApplicationManager {
 			num_nodes += temp.getNumNodes();
 		}
 		
+		// update the number of nodes used for running the application
 		sqlStatement = "UPDATE application SET num_nodes = " + num_nodes + " WHERE id =" + application.getId() + ";";
 		if (!dbConn.updateQuery(sqlStatement)) {
 			System.out.println("[AM] Failed updating number of nodes.");
@@ -365,22 +381,28 @@ public class ApplicationManager {
 		dbConn.updateQuery("INSERT INTO task (id, job_id, active, complete, last_modified) " +
 				"VALUES (" + taskId + ", " + job.getId() + ", " + 1 + ", " + 0 + ", '" + new Date().toString() + "');");
 		if (filename != null) {
-			dbConn.updateQuery("INSERT INTO job_file (id, filename) " +
-					"VALUES (" + job.getId() + ", '" + filename +"');");
+			dbConn.updateQuery("INSERT INTO job_file (id, filename) " + "VALUES (" + job.getId() + ", '" + filename +"');");
 		}
 		return new Task(taskId, job.getId(), filename, job.getExeFile());
 	}
 	
+	/**
+	 * Create a Cache job from an application.
+	 * 
+	 * @param request
+	 * @param applicationId
+	 * @param priority
+	 * @return
+	 */
 	private static Job createCacheJob(ApplicationRequest request, int applicationId, int priority) {
 		boolean successQuery = false;
 		Job job = null;
 
-		// Create the MAP job
+		// Create a new job object
 		int jobId = getNewId("job");
 		if (jobId < 0) {
 			jobId = 1;
 		}
-		
 		String exe = request.getJobExecutable(JobType.CACHE);
 		int numNodes = request.getNumWorkers(JobType.CACHE);
 		
@@ -402,7 +424,6 @@ public class ApplicationManager {
 		for (int i = 0; i < numNodes; i++) {
 			job.addTask(generateTask(job, null));
 		}
-		
 		return job;
 	}
 

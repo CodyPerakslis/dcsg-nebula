@@ -14,9 +14,9 @@ import java.util.Queue;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import edu.umn.cs.Nebula.model.Application;
-import edu.umn.cs.Nebula.model.Job;
-import edu.umn.cs.Nebula.model.Task;
+import edu.umn.cs.Nebula.application.Application;
+import edu.umn.cs.Nebula.application.Job;
+import edu.umn.cs.Nebula.application.Task;
 import edu.umn.cs.Nebula.node.NodeInfo;
 import edu.umn.cs.Nebula.request.SchedulerRequest;
 import edu.umn.cs.Nebula.request.SchedulerRequestType;
