@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.model;
+package edu.umn.cs.Nebula.application;
 
 import java.util.Date;
 
@@ -14,6 +14,7 @@ public class Task {
 	private String inputFile;
 	private String executableFile;
 	private String status;
+	private JobType type;
 	
 	public Task(int id, int jobId) {
 		this.id = id;
@@ -110,5 +111,13 @@ public class Task {
 
 	public void setStatus(String status) {
 		this.status = status;
+	}
+
+	public JobType getType() {
+		return type;
+	}
+
+	public void setType(JobType type) {
+		this.type = type;
 	}
 }

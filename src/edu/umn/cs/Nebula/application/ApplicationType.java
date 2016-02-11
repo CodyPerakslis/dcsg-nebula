@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.model;
+package edu.umn.cs.Nebula.application;
 
 public enum ApplicationType {
 	MAPREDUCE, MOBILECACHING

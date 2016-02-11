@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.model;
+package edu.umn.cs.Nebula.application;
 
 import java.util.ArrayList;
 import java.util.Date;
