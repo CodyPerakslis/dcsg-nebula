@@ -3,8 +3,6 @@ package edu.umn.cs.Nebula.model;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-import edu.umn.cs.Nebula.application.Task;
-
 public class Schedule {
 	private HashMap<String, ArrayList<Task>> map;
 	

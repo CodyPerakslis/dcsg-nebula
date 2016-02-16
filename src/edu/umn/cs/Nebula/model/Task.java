@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.application;
+package edu.umn.cs.Nebula.model;
 
 import java.util.Date;
 
