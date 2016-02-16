@@ -13,8 +13,8 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.Nebula.application.JobType;
-import edu.umn.cs.Nebula.application.Task;
+import edu.umn.cs.Nebula.model.JobType;
+import edu.umn.cs.Nebula.model.Task;
 import edu.umn.cs.Nebula.request.ComputeRequest;
 
 public class ComputeNode extends Node {
@@ -81,13 +81,13 @@ public class ComputeNode extends Node {
 			
 			exitCode = childProcess.waitFor();
 		} catch (IOException | InterruptedException e) {
-			e.printStackTrace();
+			System.out.println("[COMPUTE] Failed executing a child process: " + e);
 		}
 		return exitCode;
 	}
 	
 	public static void main(String args[]) {
-		connect(nebulaUrl, NodeType.COMPUTE);
+		//connect(nebulaUrl, NodeType.COMPUTE);
 		int status = -1;
 
 		// Starting Task Fetcher

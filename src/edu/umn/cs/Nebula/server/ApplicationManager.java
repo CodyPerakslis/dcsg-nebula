@@ -15,13 +15,13 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.Nebula.application.Application;
-import edu.umn.cs.Nebula.application.ApplicationType;
-import edu.umn.cs.Nebula.application.Job;
-import edu.umn.cs.Nebula.application.JobType;
-import edu.umn.cs.Nebula.application.Task;
+import edu.umn.cs.Nebula.model.Application;
+import edu.umn.cs.Nebula.model.ApplicationType;
 import edu.umn.cs.Nebula.model.DatabaseConnector;
+import edu.umn.cs.Nebula.model.Job;
+import edu.umn.cs.Nebula.model.JobType;
 import edu.umn.cs.Nebula.model.Schedule;
+import edu.umn.cs.Nebula.model.Task;
 import edu.umn.cs.Nebula.request.ApplicationRequest;
 import edu.umn.cs.Nebula.request.ScheduleRequest;
 import edu.umn.cs.Nebula.request.TaskRequest;

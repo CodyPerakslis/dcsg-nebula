@@ -2,7 +2,7 @@ package edu.umn.cs.Nebula.request;
 
 import java.util.HashMap;
 
-import edu.umn.cs.Nebula.application.Task;
+import edu.umn.cs.Nebula.model.Task;
 
 public class ScheduleRequest {
 	private HashMap<String, Task> nodeTask;

@@ -2,7 +2,7 @@ package edu.umn.cs.Nebula.request;
 
 import java.util.ArrayList;
 
-import edu.umn.cs.Nebula.application.JobType;
+import edu.umn.cs.Nebula.model.JobType;
 
 public class ComputeRequest {
 	private JobType jobType;
