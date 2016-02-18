@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
@@ -306,7 +307,7 @@ public class ResourceManager {
 					System.out.println("[RM] Leased: " + successfullyLeasedNodes.keySet() + " by " + request.getSchedulerName());
 					out.println(gson.toJson(successfullyLeasedNodes));
 				case RELEASE:
-					Set<String> releasedNodes = request.getNodes();
+					ArrayList<String> releasedNodes = request.getNodes();
 					if (releasedNodes == null) {
 						out.println(gson.toJson(false));
 					} else {

@@ -15,6 +15,17 @@ public class ApplicationRequest {
 	private HashMap<JobType, ArrayList<String>> jobInputs;
 	private HashMap<JobType, Integer> jobWorkers;
 	
+	public ApplicationRequest(ApplicationRequestType type, ApplicationType applicationType) {
+		this.setType(type);
+		this.setApplicationType(applicationType);
+	}
+	
+	public ApplicationRequest(ApplicationRequestType type, int id, ApplicationType applicationType) {
+		this.setType(type);
+		this.applicationId = id;
+		this.setApplicationType(applicationType);
+	}
+	
 	public ApplicationRequest(ApplicationRequestType type, String applicationName, ApplicationType applicationType) {
 		this.setType(type);
 		this.applicationName = applicationName;
@@ -64,6 +75,9 @@ public class ApplicationRequest {
 	}
 	
 	public int getNumWorkers(JobType type) {
+		if (!jobWorkers.containsKey(type)) {
+			return -1;
+		}
 		return jobWorkers.get(type);
 	}
 	
@@ -96,6 +110,9 @@ public class ApplicationRequest {
 	}
 
 	public ArrayList<String> getJobInputs(JobType jobType) {
+		if (!jobInputs.containsKey(jobType)) {
+			return new ArrayList<String>();
+		}
 		return jobInputs.get(jobType);
 	}
 

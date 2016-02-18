@@ -118,7 +118,8 @@ public class ApplicationManager {
 	private static ArrayList<Integer> getApplicationIds(ApplicationType type, boolean complete) {
 		ArrayList<Integer> result = new ArrayList<Integer>();
 
-		ResultSet rs = dbConn.selectQuery("SELECT id FROM application WHERE type=" + type + ", AND complete=" + complete + ";");
+		ResultSet rs = dbConn.selectQuery("SELECT id FROM application "
+				+ "WHERE type=" + type + ", AND active=true AND complete=" + complete + ";");
 		try {
 			while (rs.next()) {
 				result.add(rs.getInt(1));
@@ -307,6 +308,7 @@ public class ApplicationManager {
 		}
 
 		// Depending of the type of the application, create the corresponding jobs
+		System.out.println("[AM] Creating " + applicationType + " jobs.");
 		switch (applicationType) {
 		case MAPREDUCE:
 			jobs = createMapReduceJobs(request, id, application.getPriority());
@@ -447,7 +449,16 @@ public class ApplicationManager {
 
 		String mapExe = request.getJobExecutable(JobType.MAP);
 		ArrayList<String> mapInputs = request.getJobInputs(JobType.MAP);
-		int numNodes = Math.min(request.getNumWorkers(JobType.MAP), mapInputs.size());
+		int numNodes = 0;
+		if (mapInputs == null || mapInputs.isEmpty()) {
+			System.out.println("[MR] No inputs for MAP.");
+			return null;
+		}
+		if (request.getNumWorkers(JobType.MAP) < 0) {
+			numNodes = mapInputs.size();
+		} else {
+			numNodes = Math.min(request.getNumWorkers(JobType.MAP), mapInputs.size());
+		}
 
 		if (mapExe == null || mapInputs == null || mapInputs.size() < 1) {
 			System.out.println("[MR] Failed creating a MAP job.");
@@ -461,6 +472,8 @@ public class ApplicationManager {
 		if (!successQuery) {
 			System.out.println("[MR] Failed saving a MAP job.");
 			return null;
+		} else {
+			System.out.println("[MR] MAP job created.");
 		}
 		// Create MAP tasks
 		for (String filename: mapInputs) {
@@ -476,7 +489,15 @@ public class ApplicationManager {
 
 		String redExe = request.getJobExecutable(JobType.REDUCE);
 		ArrayList<String> redInputs = request.getJobInputs(JobType.REDUCE);
-		numNodes = Math.min(request.getNumWorkers(JobType.REDUCE), redInputs.size());
+		if (redInputs == null || redInputs.isEmpty()) {
+			System.out.println("[MR] No inputs for REDUCE.");
+			return null;
+		}
+		if (request.getNumWorkers(JobType.REDUCE) < 0) {
+			numNodes = redInputs.size();
+		} else {
+			numNodes = Math.min(request.getNumWorkers(JobType.REDUCE), redInputs.size());
+		}
 
 		if (redExe == null || redInputs == null || redInputs.size() < 1) {
 			System.out.println("[MR] Failed creating a REDUCE job.");
@@ -588,11 +609,7 @@ public class ApplicationManager {
 						success = deleteApplication(appRequest);
 						out.println(gson.toJson(success));
 						break;
-					case GETINACTIVEAPP:
-						applicationIds = getApplicationIds(appRequest.getApplicationType(), false);
-						out.println(gson.toJson(applicationIds));
-						break;	
-					case GETALLINACTIVEAPP:
+					case GETINCOMPLETEAPP:
 						applicationIds = getApplicationIds(appRequest.getApplicationType(), false);
 						out.println(gson.toJson(applicationIds));
 						break;
@@ -628,7 +645,7 @@ public class ApplicationManager {
 						out.println(gson.toJson(removed));
 						break;
 					case FINISH:	// update the status of a task
-						if (taskRequest.getTaskId() >= 0) {					
+						if (taskRequest.getTaskId() >= 0 && taskRequest.getNodeId() != null) {				
 							// update the task info in the DB
 							String sqlStatement = "UPDATE task "
 									+ "SET active=0, complete=1, completing_node=" + taskRequest.getNodeId()
@@ -651,6 +668,20 @@ public class ApplicationManager {
 							}
 						}
 						out.println(gson.toJson(removed));
+						break;
+					case CHECK: // check the status of a task
+						if (taskRequest.getTaskId() >= 0) {
+							String sqlStatement = "SELECT * FROM task WHERE id=" + taskRequest.getTaskId() + ";";
+							ResultSet rs = dbConn.selectQuery(sqlStatement);
+							try {
+								task = new Task(rs.getInt("id"), rs.getInt("job_id"));
+								task.setActive(rs.getBoolean("active"));
+								task.setComplete(rs.getBoolean("complete"));
+							} catch (SQLException e) {
+								System.out.println("[AM] Failed getting task information for checking: " + e);
+							}
+							out.println(gson.toJson(task));
+						}
 						break;
 					default:
 						System.out.println("[AM] Invalid request: " + taskRequest.getType());
