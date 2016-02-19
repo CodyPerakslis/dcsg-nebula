@@ -8,8 +8,10 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.PriorityQueue;
 import java.util.Queue;
+import java.util.Set;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -28,40 +30,69 @@ import edu.umn.cs.Nebula.request.SchedulerRequestType;
 
 
 public abstract class Scheduler {
-	protected final long SLEEP_TIME = 10000;
-	protected final int MAX_JOB_SCHEDULING = 1;
+	protected static final long SLEEP_TIME = 10000; // in milliseconds
+	protected static final long GRACE_PERIOD = -20000; // in milliseconds
+	protected static final int MAX_JOB_SCHEDULING = 1;
 
-	protected String applicationManagerServer = "localhost";
-	protected int applicationManagerPort = 6421;
-	protected String resourceManagerServer = "localhost";
-	protected int resourceManagerPort = 6424;
+	protected static String applicationManagerServer = "localhost";
+	protected static int applicationManagerPort = 6421;
+	protected static String resourceManagerServer = "localhost";
+	protected static int resourceManagerPort = 6424;
 
-	protected String name;
+	protected static String name;
+	protected static ApplicationType appType;
 
-	protected HashMap<Integer, Application> applications = new HashMap<Integer, Application>();
-	protected HashMap<String, NodeInfo> nodesStatus;
-	protected HashMap<String, Lease> leasedNodes;
-	protected final Object leaseLock = new Object();
+	protected static HashMap<Integer, Application> applications = new HashMap<Integer, Application>();
+	protected static HashMap<String, NodeInfo> nodeStatus;
+	protected static HashMap<String, Lease> leasedNodes;
+	protected static final Object leaseLock = new Object();
 
-	protected HashMap<Integer, Task> scheduledNodes = new HashMap<Integer, Task>();
-	protected Queue<Job> jobQueue = new PriorityQueue<Job>(100, new Comparator<Job>() {
+	protected static HashMap<String, Task> scheduledNodes = new HashMap<String, Task>();
+	protected static HashMap<Integer, Task> scheduledTasks = new HashMap<Integer, Task>();
+	protected static HashSet<Integer> completedApps = new HashSet<Integer>();
+	
+	protected static Queue<Job> jobQueue = new PriorityQueue<Job>(100, new Comparator<Job>() {
 		@Override
 		public int compare(Job job1, Job job2) {
 			return job1.getPriority() - job2.getPriority();
 		}
 	});
-
-	public Scheduler(String name) {
-		this.name = name;
-		nodesStatus = new HashMap<String, NodeInfo>();
+	
+	/**
+	 * Initialize a scheduler and run a lease-monitoring thread, which automatically release expired lease.
+	 * An expired node will be released if:
+	 * (1) it is not used
+	 * (2) it is used but it takes longer than the grace period
+	 * 
+	 * @param schedulerName
+	 * @param type
+	 */
+	protected static void init(String schedulerName, ApplicationType type) {
+		System.out.print("[" + schedulerName + "] initializing scheduler of type " + type + " ...");
+		name = schedulerName;
+		appType = type;
+		nodeStatus = new HashMap<String, NodeInfo>();
 		leasedNodes = new HashMap<String, Lease>();
+		Thread leaseMonitor = new Thread(new LeaseMonitor());
+		leaseMonitor.start();
+		System.out.println("[OK]");
+	}
+	
+	protected static void printStatus() {
+		System.out.println("========= STATUS =========");
+		System.out.println("[" + name + "] Online Nodes: " + nodeStatus.keySet());
+		System.out.println("[" + name + "] Leased nodes: " + leasedNodes.keySet());
+		System.out.println("[" + name + "] Scheduled tasks: " + scheduledTasks.keySet());
+		System.out.println("[" + name + "] Num Jobs in queue: " + jobQueue.size());
+		System.out.println("==========================\n");
 	}
 	
 	/**
 	 * Update the status of all online nodes.
+	 * 
 	 * @return success
 	 */
-	protected boolean getNodes() {
+	protected static boolean getNodes() {
 		SchedulerRequest request = new SchedulerRequest(SchedulerRequestType.GET, name);
 		Gson gson = new Gson();
 		BufferedReader in = null;
@@ -76,8 +107,12 @@ public abstract class Scheduler {
 
 			out.println(gson.toJson(request));
 			out.flush();
-			nodesStatus = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, NodeInfo>>(){}.getType());
-			success = true;
+			nodeStatus = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, NodeInfo>>(){}.getType());
+			if (nodeStatus != null) {
+				success = true;
+			} else {
+				success = false;
+			}
 		} catch (IOException e) {
 			System.out.println("[" + name + "] Failed getting nodes: " + e);
 		} finally {
@@ -92,16 +127,32 @@ public abstract class Scheduler {
 		return success;
 	}
 	
-	protected void leaseNodes(HashMap<String, Lease> leases) {
+	/**
+	 * Lease nodes from the Resource Manager.
+	 * 
+	 * @param leases
+	 * @return
+	 */
+	protected static boolean leaseNodes(HashMap<String, Lease> leases) {
 		SchedulerRequest request = new SchedulerRequest(SchedulerRequestType.LEASE, name);
 		Gson gson = new Gson();
 		BufferedReader in = null;
 		PrintWriter out = null;
 		Socket socket = null;
 		HashMap<String, Lease> successLeases = null;
+
+		if (leases == null || leases.isEmpty()) {
+			System.out.println("[" + name + "] Lease Map is null or empty.");
+			return false;
+		}
 		
 		for (String nodeId: leases.keySet()) {
-			request.addLease(nodeId, leases.get(nodeId));
+			// we can only lease nodes that are currently not being used by other schedulers
+			if (nodeStatus.containsKey(nodeId)) {
+				if (nodeStatus.get(nodeId).getNote().equals("0") || leasedNodes.containsKey(nodeId)) {
+					request.addLease(nodeId, leases.get(nodeId));
+				}
+			}
 		}
 
 		try {
@@ -113,8 +164,14 @@ public abstract class Scheduler {
 			out.flush();
 			successLeases = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, Lease>>(){}.getType());
 
+			if (successLeases == null || successLeases.isEmpty()) {
+				System.out.println("[" + name + "] Failed leasing. Leases return with null, or empty leases.");
+				return false;
+			}
+			
 			synchronized(leaseLock) {
 				for (String nodeId: successLeases.keySet()) {
+					// record the nodes that are successfully leased
 					leasedNodes.put(nodeId, successLeases.get(nodeId));
 				}
 			}
@@ -129,9 +186,16 @@ public abstract class Scheduler {
 				System.out.println("[" + name + "] Failed closing streams/socket: " + e);
 			}
 		}
+		return true;
 	}
 
-	protected boolean releaseResources(ArrayList<String> nodes) {
+	/**
+	 * Release nodes.
+	 * 
+	 * @param nodes
+	 * @return
+	 */
+	protected static boolean releaseNodes(Set<String> nodes) {
 		SchedulerRequest request = new SchedulerRequest(SchedulerRequestType.RELEASE, name, nodes);
 		Gson gson = new Gson();
 		BufferedReader in = null;
@@ -161,7 +225,12 @@ public abstract class Scheduler {
 		return success;
 	}
 
-	protected void getInactiveJobs(ApplicationType type) {
+	/**
+	 * Get a list of inactive jobs. 
+	 * 
+	 * @param type
+	 */
+	protected static void getInactiveJobs(ApplicationType type) {
 		ApplicationRequest request = new ApplicationRequest(ApplicationRequestType.GETINCOMPLETEAPP, type);
 		Gson gson = new Gson();
 		BufferedReader in = null;
@@ -178,8 +247,32 @@ public abstract class Scheduler {
 			ArrayList<Integer> applicationIds = gson.fromJson(in.readLine(), new TypeToken<ArrayList<Integer>>(){}.getType());
 			
 			for (int id: applicationIds) {
-				if (applications.containsKey(id))
+				if (completedApps.contains(id)) {
+					// the application has been completed, ignore it
 					continue;
+				}
+				
+				// we have seen this application before
+				if (applications.containsKey(id)) {
+					boolean getUpdate = false;
+					for (Job job: applications.get(id).getJobs().values()) {
+						// if any of its jobs is incomplete or inactive, get update on the applications
+						if (!jobQueue.contains(job) || !job.isActive() || !job.isComplete()) {
+							getUpdate = true;
+							break;
+						}
+					}
+					if (!getUpdate) {
+						continue;
+					}
+				}
+				
+				out.close();
+				in.close();
+				socket.close();
+				socket = new Socket(applicationManagerServer, applicationManagerPort);
+				out = new PrintWriter(socket.getOutputStream());
+				in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 				
 				request = new ApplicationRequest(ApplicationRequestType.GET, id, type);
 				out.println(gson.toJson(request));
@@ -187,10 +280,31 @@ public abstract class Scheduler {
 				Application app = gson.fromJson(in.readLine(), Application.class);
 				if (app == null) {
 					System.out.println("[" + name + "] Failed getting application with id=" + id);
-				} else {
-					applications.put(id, app);
-					for (Job job: app.getJobs().values()) {
-						jobQueue.add(job);
+				} else {					
+					if (applications.containsKey(id)) {
+						for (Job job: app.getJobs().values()) {
+							if (job.isComplete()) {
+								// remove the job that has been completed
+								jobQueue.remove(job);
+							}
+						}
+						if (app.isComplete()) {
+							// remove the application if it has been completed
+							applications.remove(app);
+							completedApps.add(app.getId());
+						}
+					} else if (!app.isComplete()) {
+						// new application
+						applications.put(id, app);
+						for (Job job: app.getJobs().values()) {
+							// add all of its jobs to the queue if they are not complete yet
+							if (!job.isComplete()) {
+								jobQueue.add(job);
+							}
+						}
+					} else {
+						// this application is not monitored but complete, ignore it
+						completedApps.add(app.getId());
 					}
 				}
 			}
@@ -207,7 +321,13 @@ public abstract class Scheduler {
 		}		
 	}
 	
-	protected boolean assignTasks(HashMap<String, Task> nodeTask) {
+	/**
+	 * Assign a task for a specific node. The task will be added to the node's queue in the Application Manager.
+	 * 
+	 * @param nodeTask
+	 * @return
+	 */
+	protected static boolean assignTasks(HashMap<String, Task> nodeTask) {
 		ScheduleRequest request = new ScheduleRequest();
 		request.setNodeTask(nodeTask);
 		Gson gson = new Gson();
@@ -215,7 +335,7 @@ public abstract class Scheduler {
 		PrintWriter out = null;
 		Socket socket = null;
 		Boolean success = false;
-
+		
 		try {
 			socket = new Socket(applicationManagerServer, applicationManagerPort);
 			out = new PrintWriter(socket.getOutputStream());
@@ -238,12 +358,12 @@ public abstract class Scheduler {
 		return success;
 	}
 	
-	protected class LeaseMonitor implements Runnable {
-		protected final long monitorTime = 10000; // in milliseconds
-		protected ArrayList<String> expiredNodes;
+	private static class LeaseMonitor implements Runnable {
+		private final long monitorTime = 10000; // in milliseconds
+		private HashSet<String> expiredNodes;
 		
 		private LeaseMonitor() {
-			expiredNodes = new ArrayList<String>();
+			expiredNodes = new HashSet<String>();
 		}
 		
 		@Override
@@ -251,7 +371,13 @@ public abstract class Scheduler {
 			while (true) {
 				synchronized (leaseLock) {
 					for (String nodeId: leasedNodes.keySet()) {
-						if (leasedNodes.get(nodeId).getRemainingTime() <= 0) {
+						if (scheduledNodes.containsKey(nodeId)) {
+							// the node is currently in-used but has been expired longer than the GRACE_PERIOD
+							if (leasedNodes.get(nodeId).getRemainingTime() <= GRACE_PERIOD) {
+								expiredNodes.add(nodeId);
+							}
+						} else if (leasedNodes.get(nodeId).getRemainingTime() <= 0) {
+							// the node is not used and expired
 							expiredNodes.add(nodeId);
 						}
 					}
@@ -260,7 +386,7 @@ public abstract class Scheduler {
 					}
 				}
 				
-				if (releaseResources(expiredNodes)) {
+				if (!expiredNodes.isEmpty() && releaseNodes(expiredNodes)) {
 					expiredNodes.clear();
 				}
 				

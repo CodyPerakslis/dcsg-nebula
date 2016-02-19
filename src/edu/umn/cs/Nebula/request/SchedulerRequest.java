@@ -1,7 +1,8 @@
 package edu.umn.cs.Nebula.request;
 
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 import edu.umn.cs.Nebula.model.Lease;
 
@@ -10,7 +11,7 @@ public class SchedulerRequest {
 	private SchedulerRequestType type;
 	private String schedulerName;
 	private HashMap<String, Lease> leases;
-	private ArrayList<String> nodes;
+	private Set<String> nodes;
 
 	public SchedulerRequest(SchedulerRequestType type, String schedulerName) {
 		this.type = type;
@@ -18,10 +19,10 @@ public class SchedulerRequest {
 		leases = new HashMap<String, Lease>();
 	}
 	
-	public SchedulerRequest(SchedulerRequestType type, String schedulerName, ArrayList<String> nodes) {
+	public SchedulerRequest(SchedulerRequestType type, String schedulerName, Set<String> nodes) {
 		this.type = type;
 		this.setSchedulerName(schedulerName);
-		nodes = new ArrayList<String>();
+		nodes = new HashSet<String>();
 	}
 	
 	public SchedulerRequestType getType() {
@@ -56,11 +57,15 @@ public class SchedulerRequest {
 		return leases.size();
 	}
 	
-	public ArrayList<String> getNodes() {
+	public Set<String> getLeaseNodes() {
+		return leases.keySet();
+	}
+	
+	public Set<String> getNodes() {
 		return nodes;
 	}
 
-	public void setNodes(ArrayList<String> nodes) {
+	public void setNodes(HashSet<String> nodes) {
 		this.nodes = nodes;
 	}
 }

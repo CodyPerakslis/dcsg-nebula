@@ -18,8 +18,8 @@ import edu.umn.cs.Nebula.node.NodeType;
 import edu.umn.cs.Nebula.request.NodeRequest;
 
 public class NebulaMonitor {
-	private static final long maxInactive = 5000; // in milliseconds
-	private static final int updateInterval = 2000; // in milliseconds
+	private static final long maxInactive = 8000; // in milliseconds
+	private static final int updateInterval = 5000; // in milliseconds
 	private static final int port = 6422;
 	private static final int poolSize = 30;
 

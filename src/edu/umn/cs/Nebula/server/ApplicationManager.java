@@ -119,7 +119,7 @@ public class ApplicationManager {
 		ArrayList<Integer> result = new ArrayList<Integer>();
 
 		ResultSet rs = dbConn.selectQuery("SELECT id FROM application "
-				+ "WHERE type=" + type + ", AND active=true AND complete=" + complete + ";");
+				+ "WHERE type='" + type + "' AND active=true AND complete=" + complete + ";");
 		try {
 			while (rs.next()) {
 				result.add(rs.getInt(1));
@@ -223,7 +223,7 @@ public class ApplicationManager {
 					taskId = rs.getInt("id");
 					active = rs.getBoolean("active");
 					complete = rs.getBoolean("complete");
-					completingNode = rs.getString("completingNode");
+					completingNode = rs.getString("completing_node");
 					status = rs.getString("status");
 
 					Task task = new Task(taskId, id);
@@ -513,6 +513,13 @@ public class ApplicationManager {
 			System.out.println("[MR] Failed saving a REDUCE job.");
 			return null;
 		}
+		successQuery = dbConn.updateQuery("INSERT INTO dependency (id, dep_id) " +
+				"VALUES (" + mapJobId + ", " + redJobId + ");");
+		if (!successQuery) {
+			System.out.println("[MR] Failed saving a dependency record.");
+			return null;
+		}
+		
 		// Create MAP tasks
 		for (String filename: redInputs) {
 			redJob.addFile(filename);
