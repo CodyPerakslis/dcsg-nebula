@@ -658,7 +658,7 @@ public class ApplicationManager {
 
 				// Application request handler
 				if (appRequest != null && appRequest.getType() != null) {
-					System.out.println("[AM] Received an application request: " + appRequest.getType());
+					// System.out.println("[AM] Received an application request: " + appRequest.getType());
 					switch (appRequest.getType()) {
 					case CREATE:
 						success = generateApplication(appRequest);
@@ -680,13 +680,13 @@ public class ApplicationManager {
 						Application app = null;
 						if (appRequest.getApplicationId() >= 0) {
 							app = getApplication(appRequest.getApplicationId());
-							System.out.println("[AM] app: " + app.getId() + ", " + app.getName() + ", " + app.getApplicationType() + ", " + app.getNumJobs());
+							System.out.println("[AM] GET app: " + app.getId() + ", " + app.getName() + ", " + app.getApplicationType() + ", " + app.getNumJobs());
 						}
 						out.println(gson.toJson(app));
 						break;
 					default:
 						System.out.println("[AM] Invalid request: " + appRequest.getType());
-						out.println(gson.toJson(success));
+						out.println(gson.toJson(false));
 					}
 				} 
 				// Task request handler
@@ -749,7 +749,7 @@ public class ApplicationManager {
 						break;
 					default:
 						System.out.println("[AM] Invalid request: " + taskRequest.getType());
-						out.println(gson.toJson(success));
+						out.println(gson.toJson(false));
 					}
 				} 
 				// Schedule request handler
@@ -757,14 +757,14 @@ public class ApplicationManager {
 					synchronized(scheduleLock) {
 						for (String nodeId: scheduleRequest.getNodeTask().keySet()) {
 							schedule.addTask(nodeId, scheduleRequest.getNodeTask().get(nodeId));
+							System.out.println(nodeId + ": " + schedule.getList(nodeId));
 						}
 					}
 					out.println(gson.toJson(true));
 				} else {
 					System.out.println("[AM] Invalid request. ");
-					out.println(gson.toJson(success));
+					out.println(gson.toJson(false));
 				}
-
 				out.flush();
 			} catch (IOException e) {
 				System.err.println("[AM]: " + e);

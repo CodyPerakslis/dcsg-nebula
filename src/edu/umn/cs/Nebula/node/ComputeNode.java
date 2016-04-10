@@ -42,7 +42,7 @@ public class ComputeNode extends Node {
 			conn.setDoOutput(true);
 
 			PrintWriter out = new PrintWriter(conn.getOutputStream());
-			out.write("id=" + id + "&requestType=FETCH");
+			out.write("id=" + id + "&requestType=GET");
 			out.flush();
 			conn.connect();
 
