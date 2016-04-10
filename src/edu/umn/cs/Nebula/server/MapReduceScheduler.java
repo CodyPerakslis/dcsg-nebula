@@ -56,7 +56,7 @@ public class MapReduceScheduler extends Scheduler {
 		while (true) {
 			printStatus();
 			// get a list of jobs of type appType
-			getInactiveJobs(appType);
+			getIncompleteJobs(appType);
 			if (jobQueue.isEmpty()) {
 				System.out.println("[" + name + "] No jobs in the queue.");
 				Thread.sleep(sleepTime);

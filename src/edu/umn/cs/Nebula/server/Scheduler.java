@@ -104,9 +104,10 @@ public abstract class Scheduler {
 			socket = new Socket(resourceManagerServer, resourceManagerPort);
 			out = new PrintWriter(socket.getOutputStream());
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
+			// send a GET nodes request to the resource manager
 			out.println(gson.toJson(request));
 			out.flush();
+			// update the info of all nodes
 			nodeStatus = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, NodeInfo>>(){}.getType());
 			if (nodeStatus != null) {
 				success = true;
@@ -147,11 +148,9 @@ public abstract class Scheduler {
 		}
 		
 		for (String nodeId: leases.keySet()) {
-			// we can only lease nodes that are currently not being used by other schedulers
-			if (nodeStatus.containsKey(nodeId)) {
-				if (nodeStatus.get(nodeId).getNote().equals("0") || leasedNodes.containsKey(nodeId)) {
-					request.addLease(nodeId, leases.get(nodeId));
-				}
+			// we can only lease nodes that are currently not being used by another scheduler
+			if (nodeStatus.containsKey(nodeId) && (nodeStatus.get(nodeId).getNote().equals("0") || leasedNodes.containsKey(nodeId))) {
+				request.addLease(nodeId, leases.get(nodeId));
 			}
 		}
 
@@ -159,7 +158,7 @@ public abstract class Scheduler {
 			socket = new Socket(resourceManagerServer, resourceManagerPort);
 			out = new PrintWriter(socket.getOutputStream());
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
+			// send a LEASE request to the resource manager
 			out.println(gson.toJson(request));
 			out.flush();
 			successLeases = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, Lease>>(){}.getType());
@@ -171,7 +170,7 @@ public abstract class Scheduler {
 			
 			synchronized(leaseLock) {
 				for (String nodeId: successLeases.keySet()) {
-					// record the nodes that are successfully leased
+					// record the nodes that have been successfully leased
 					leasedNodes.put(nodeId, successLeases.get(nodeId));
 				}
 			}
@@ -190,7 +189,7 @@ public abstract class Scheduler {
 	}
 
 	/**
-	 * Release nodes.
+	 * Release nodes to the resource manager.
 	 * 
 	 * @param nodes
 	 * @return
@@ -207,7 +206,7 @@ public abstract class Scheduler {
 			socket = new Socket(resourceManagerServer, resourceManagerPort);
 			out = new PrintWriter(socket.getOutputStream());
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
+			// send a REALEASE message to the resource manager
 			out.println(gson.toJson(request));
 			out.flush();
 			success = gson.fromJson(in.readLine(), Boolean.class);
@@ -226,11 +225,11 @@ public abstract class Scheduler {
 	}
 
 	/**
-	 * Get a list of inactive jobs. 
+	 * Get a list of incomplete jobs of type {@code type} from the application manager
 	 * 
 	 * @param type
 	 */
-	protected static void getInactiveJobs(ApplicationType type) {
+	protected static void getIncompleteJobs(ApplicationType type) {
 		ApplicationRequest request = new ApplicationRequest(ApplicationRequestType.GETINCOMPLETEAPP, type);
 		Gson gson = new Gson();
 		BufferedReader in = null;
@@ -245,6 +244,10 @@ public abstract class Scheduler {
 			out.println(gson.toJson(request));
 			out.flush();
 			ArrayList<Integer> applicationIds = gson.fromJson(in.readLine(), new TypeToken<ArrayList<Integer>>(){}.getType());
+			if (applicationIds == null || applicationIds.isEmpty()) {
+				System.out.println("[" + name + "] No application available.");
+				return;
+			}
 			
 			for (int id: applicationIds) {
 				if (completedApps.contains(id)) {
@@ -279,7 +282,7 @@ public abstract class Scheduler {
 				out.flush();
 				Application app = gson.fromJson(in.readLine(), Application.class);
 				if (app == null) {
-					System.out.println("[" + name + "] Failed getting application with id=" + id);
+					System.out.println("[" + name + "] Failed getting application with id:" + id);
 				} else {					
 					if (applications.containsKey(id)) {
 						for (Job job: app.getJobs().values()) {
@@ -302,8 +305,9 @@ public abstract class Scheduler {
 								jobQueue.add(job);
 							}
 						}
+						System.out.println("[" + name + "] NEW APP! id:" + id + ", #jobs:" + app.getJobs().size());
 					} else {
-						// this application is not monitored but complete, ignore it
+						// this application is not monitored but has been completed, ignore it
 						completedApps.add(app.getId());
 					}
 				}
@@ -322,7 +326,9 @@ public abstract class Scheduler {
 	}
 	
 	/**
-	 * Assign a task for a specific node. The task will be added to the node's queue in the Application Manager.
+	 * Assign a task for a specific node. 
+	 * The task will be added to the node's queue in the Application Manager
+	 * where each node is getting a task from.
 	 * 
 	 * @param nodeTask
 	 * @return
@@ -358,6 +364,12 @@ public abstract class Scheduler {
 		return success;
 	}
 	
+	/**
+	 * This thread will periodically check expired leases.
+	 * Release all expired lease whose time has exceeded the GRACE_PERIOD.
+	 * 
+	 * @author albert
+	 */
 	private static class LeaseMonitor implements Runnable {
 		private final long monitorTime = 10000; // in milliseconds
 		private HashSet<String> expiredNodes;
@@ -371,9 +383,10 @@ public abstract class Scheduler {
 			while (true) {
 				synchronized (leaseLock) {
 					for (String nodeId: leasedNodes.keySet()) {
+						// for each leased node, check if the lease has expired
 						if (scheduledNodes.containsKey(nodeId)) {
-							// the node is currently in-used but has been expired longer than the GRACE_PERIOD
 							if (leasedNodes.get(nodeId).getRemainingTime() <= GRACE_PERIOD) {
+								// the node is currently in-used but has expired longer than the GRACE_PERIOD
 								expiredNodes.add(nodeId);
 							}
 						} else if (leasedNodes.get(nodeId).getRemainingTime() <= 0) {
@@ -382,10 +395,11 @@ public abstract class Scheduler {
 						}
 					}
 					for (String nodeId: expiredNodes) {
+						// remove all expired nodes from the lease nodes list
 						leasedNodes.remove(nodeId);
 					}
 				}
-				
+				// release all expired nodes
 				if (!expiredNodes.isEmpty() && releaseNodes(expiredNodes)) {
 					expiredNodes.clear();
 				}

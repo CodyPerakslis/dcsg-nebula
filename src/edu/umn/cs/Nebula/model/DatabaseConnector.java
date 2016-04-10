@@ -34,7 +34,7 @@ public class DatabaseConnector {
 			Statement dbStatement = (Statement) dbConnection.createStatement();
 			dbStatement.executeUpdate(sqlStatement);
 		} catch (SQLException e) {
-			System.out.println("[DBCONN] Query failed: " + e);
+			System.out.println("[DBCONN] Query <" + sqlStatement + "> failed: " + e);
 			return false;
 		}
 		return true;
@@ -47,7 +47,7 @@ public class DatabaseConnector {
 			Statement dbStatement = (Statement) dbConnection.createStatement();
 			resultSet = dbStatement.executeQuery(sqlStatement);
 		} catch (SQLException e) {
-			System.out.println("[DBCONN] Failed inserting a new application: " + e);
+			System.out.println("[DBCONN] Query <" + sqlStatement + "> failed: " + e);
 			return null;
 		}
 		return resultSet;

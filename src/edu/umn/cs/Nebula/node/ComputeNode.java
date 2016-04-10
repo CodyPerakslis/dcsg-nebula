@@ -18,11 +18,11 @@ import edu.umn.cs.Nebula.model.Task;
 import edu.umn.cs.Nebula.request.ComputeRequest;
 
 public class ComputeNode extends Node {
+	private static final int max_failure = 5;
 	private static final int interval = 2000; // in milliseconds
 	private static Task task = null;
 	private static final int poolSize = 10;
 	private static final int requestPort = 2020;
-
 	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/WebInterface";
 
 	/**
@@ -42,12 +42,7 @@ public class ComputeNode extends Node {
 			conn.setDoOutput(true);
 
 			PrintWriter out = new PrintWriter(conn.getOutputStream());
-			if (id == null) {
-				System.out.println("[COMPUTE] Node id is undefined. Cannot get a task.");
-				return null;
-			} else {
-				out.write("id=" + id + "&requestType=FETCH");
-			}
+			out.write("id=" + id + "&requestType=FETCH");
 			out.flush();
 			conn.connect();
 
@@ -78,7 +73,6 @@ public class ComputeNode extends Node {
 		
 		try {
 			Process childProcess = Runtime.getRuntime().exec(command);
-			
 			exitCode = childProcess.waitFor();
 		} catch (IOException | InterruptedException e) {
 			System.out.println("[COMPUTE] Failed executing a child process: " + e);
@@ -86,56 +80,77 @@ public class ComputeNode extends Node {
 		return exitCode;
 	}
 	
-	public static void main(String args[]) {
-		//connect(nebulaUrl, NodeType.COMPUTE);
-		int status = -1;
+	/**
+	 * TODO launch a child process for task execution and wait the child till complete
+	 * Need to specify the correct command for running google-chrome with a correct task
+	 */
+	private static void runTask(String exe) {
+		int status = runProcess(exe);
+		System.out.println("[COMPUTE] Child process exits with status = " + status);
+	}
+	
+	/**
+	 * Here, the compute node is performing as a server that listens to clients on a specific port.
+	 * 
+	 * @param exe
+	 */
+	private static void runServerTask(String exe) {
+		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
+		ServerSocket serverSock = null;
 
+		try {
+			serverSock = new ServerSocket(requestPort);
+			System.out.println("[COMPUTE] Listening for client requests on port " + requestPort);
+			while (true) {
+				// listen for client requests
+				requestPool.submit(new RequestThread(serverSock.accept(), task.getType(), exe));
+			}
+		} catch (IOException e) {
+			System.err.println("[COMPUTE] Failed to establish listening socket: " + e);
+		} finally {
+			requestPool.shutdown();
+			if (serverSock != null) {
+				try {
+					serverSock.close();
+				} catch (IOException e) {
+					System.err.println("[COMPUTE] Failed to close listening socket");
+				}
+			}
+		}
+	}
+	
+	public static void main(String args[]) throws InterruptedException {
+		connect(nebulaUrl, NodeType.COMPUTE);
+		
+		int counter = 0;
+		while (id == null) {
+			if (counter < max_failure) {
+				counter++;
+				Thread.sleep(interval);
+			} else {
+				System.out.println("[COMPUTE] Failed getting node id. Exiting.");
+				System.exit(1);
+			}
+		}
+		System.out.println("[COMPUTE] id:" + id + "\t ip:" + ip);
 		// Starting Task Fetcher
 		while(true) {
 			task = getTask();
 
 			if (task == null) {
-				try {
-					System.out.println("[COMPUTE] No task.");
-					Thread.sleep(interval);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
+				System.out.println("[COMPUTE] No task.");
+				Thread.sleep(interval);
 			} else {
-				System.out.println(task.getId() + "(" + task.getType() + "): " + task.getExecutableFile());
 				String exe = task.getExecutableFile();
+				System.out.println(task.getId() + " (" + task.getType() + "): " + exe);
 
 				switch(task.getType()) {
 				case MAP:
 				case REDUCE:
-					// TODO launch a child process for task execution and wait the child till complete
-					// Need to specify the correct command for running google-chrome with a correct task
-					status = runProcess(exe);
-					System.out.println("[COMPUTE] Child process exits with status = " + status);
+					runTask(exe);
 					break;
-				case CACHE:
-					// Here, the compute node is performing as a server that listens to clients on a specific port
-					ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
-					ServerSocket serverSock = null;
-
-					try {
-						serverSock = new ServerSocket(requestPort);
-						System.out.println("[COMPUTE] Listening for client requests on port " + requestPort);
-						while (true) {
-							requestPool.submit(new RequestThread(serverSock.accept(), task.getType(), exe));
-						}
-					} catch (IOException e) {
-						System.err.println("[COMPUTE] Failed to establish listening socket: " + e);
-					} finally {
-						requestPool.shutdown();
-						if (serverSock != null) {
-							try {
-								serverSock.close();
-							} catch (IOException e) {
-								System.err.println("[COMPUTE] Failed to close listening socket");
-							}
-						}
-					}
+				case MOBILE:
+					runServerTask(exe);
 					break;
 				default:
 					System.out.println("[COMPUTE] Undefined handler for task of type: " + task.getType());
@@ -153,7 +168,7 @@ public class ComputeNode extends Node {
 		private final JobType type;
 		private final String exe;
 
-		public RequestThread(Socket sock, JobType type, String exe) {
+		private RequestThread(Socket sock, JobType type, String exe) {
 			clientSock = sock;
 			this.type = type;
 			this.exe = exe;
@@ -164,7 +179,6 @@ public class ComputeNode extends Node {
 			BufferedReader in = null;
 			PrintWriter out = null;
 			Gson gson = new Gson();
-			int status = -1;
 			
 			try {
 				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
@@ -173,21 +187,16 @@ public class ComputeNode extends Node {
 				ComputeRequest request = gson.fromJson(in.readLine(), ComputeRequest.class);
 				if (!request.getJobType().equals(type)) {
 					// The request is of different type from the task assigned for this node
-					System.out.println("[COMPUTE] Invalid job type request.");
 					out.println("Invalid job type request.");
 				} else {
-					// TODO parse the request and create a Chrome child process for processing
-					// the request inside NaCl sandbox. The request parameters need to be forwarded
-					// in the http request command.
-					String command = exe;
-					status = runProcess(command);
-					out.println("Chrome process finish with exit code: " + status);
+					System.out.println("[COMPUTE] Task: " + exe);
+					// TODO run the task here
+					// status = runProcess(exe);
 				}
 				out.flush();
 			} catch (IOException e) {
-				System.out.println("[COMPUTE] IOException in handling client request.");
+				System.out.println("[COMPUTE] IOException in handling client request: " + e.getMessage());
 				out.println("IOException in handling client request.");
-				e.printStackTrace();
 			} finally {
 				try {
 					if (in != null)in.close();

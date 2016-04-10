@@ -65,7 +65,6 @@ public abstract class Node {
 					}
 				} catch (IOException e) {
 					System.out.println("[NODE] Failed connecting to Nebula: " + e);
-					e.printStackTrace();
 					return;
 				}
 				try {
