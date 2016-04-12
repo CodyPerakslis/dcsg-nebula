@@ -314,6 +314,7 @@ public abstract class Scheduler {
 			}
 		} catch (IOException e) {
 			System.out.println("[" + name + "] Failed getting jobs: " + e);
+			e.printStackTrace();
 		} finally {
 			try {
 				if (in != null) in.close();

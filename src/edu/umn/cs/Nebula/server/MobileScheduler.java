@@ -25,8 +25,7 @@ public class MobileScheduler extends Scheduler {
 		for (Integer taskId: tasks.keySet()) {
 			// Randomly select nodes and lease for 1 minute
 			for (String nodeId: nodeStatus.keySet()) {
-				if (!nodeStatus.get(nodeId).getNote().equals("0") ||
-						temporaryNodeTaskMapping.containsKey(nodeId)) {
+				if (Integer.parseInt(nodeStatus.get(nodeId).getNote()) > 0 || temporaryNodeTaskMapping.containsKey(nodeId)) {
 					// this node is not available or has been selected for another task
 					continue;
 				}

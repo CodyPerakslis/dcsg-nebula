@@ -59,6 +59,7 @@ public class ResourceManager {
 			for (String nodeId: leaseRequest.getLeaseNodes()) {
 				// the node is not available
 				if (nodes.get(nodeId) == null) {
+					System.out.println("[RM] " + nodeId + " is not available."); 
 					continue;
 				}
 
@@ -66,6 +67,7 @@ public class ResourceManager {
 					if (busyNodes.get(nodeId).getScheduler() != null && 
 							!busyNodes.get(nodeId).getScheduler().equals(leaseRequest.getSchedulerName())) {
 						// do not let a scheduler to acquire a node that has already been claimed by other scheduler
+						System.out.println("[RM] " + nodeId + " is busy."); 
 						continue;
 					}
 				}

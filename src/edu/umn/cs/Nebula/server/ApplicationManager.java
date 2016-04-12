@@ -680,7 +680,7 @@ public class ApplicationManager {
 						Application app = null;
 						if (appRequest.getApplicationId() >= 0) {
 							app = getApplication(appRequest.getApplicationId());
-							System.out.println("[AM] GET app: " + app.getId() + ", " + app.getName() + ", " + app.getApplicationType() + ", " + app.getNumJobs());
+							// System.out.println("[AM] GET app: " + app.getId() + ", " + app.getName() + ", " + app.getApplicationType() + ", " + app.getNumJobs());
 						}
 						out.println(gson.toJson(app));
 						break;
@@ -699,6 +699,11 @@ public class ApplicationManager {
 					case GET:	// get a task that is scheduled for the node, if any.
 						synchronized(scheduleLock) {
 							task = schedule.getFirstTask(taskRequest.getNodeId());
+						}
+						if (task != null) {
+							System.out.println("[AM] TASK: " + task.getId() + " type:" + task.getType().toString());
+						} else {
+							System.out.println("[AM] No task for node: " + taskRequest.getNodeId() + ". Schedule: " + schedule.getList(taskRequest.getNodeId()));
 						}
 						out.println(gson.toJson(task));
 						break;
@@ -754,10 +759,10 @@ public class ApplicationManager {
 				} 
 				// Schedule request handler
 				else if (scheduleRequest != null && scheduleRequest.getNodeTask() != null && !scheduleRequest.getNodeTask().isEmpty()) {
+					System.out.println("Received a schedule request.");
 					synchronized(scheduleLock) {
 						for (String nodeId: scheduleRequest.getNodeTask().keySet()) {
 							schedule.addTask(nodeId, scheduleRequest.getNodeTask().get(nodeId));
-							System.out.println(nodeId + ": " + schedule.getList(nodeId));
 						}
 					}
 					out.println(gson.toJson(true));
