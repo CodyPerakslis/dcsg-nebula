@@ -702,8 +702,6 @@ public class ApplicationManager {
 						}
 						if (task != null) {
 							System.out.println("[AM] TASK: " + task.getId() + " type:" + task.getType().toString());
-						} else {
-							System.out.println("[AM] No task for node: " + taskRequest.getNodeId() + ". Schedule: " + schedule.getList(taskRequest.getNodeId()));
 						}
 						out.println(gson.toJson(task));
 						break;
@@ -759,7 +757,7 @@ public class ApplicationManager {
 				} 
 				// Schedule request handler
 				else if (scheduleRequest != null && scheduleRequest.getNodeTask() != null && !scheduleRequest.getNodeTask().isEmpty()) {
-					System.out.println("Received a schedule request.");
+					System.out.println("[AM] Received a schedule request.");
 					synchronized(scheduleLock) {
 						for (String nodeId: scheduleRequest.getNodeTask().keySet()) {
 							schedule.addTask(nodeId, scheduleRequest.getNodeTask().get(nodeId));

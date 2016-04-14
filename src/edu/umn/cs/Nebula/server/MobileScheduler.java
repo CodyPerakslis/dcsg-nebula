@@ -20,12 +20,14 @@ public class MobileScheduler extends Scheduler {
 	 */
 	private static HashMap<String, Lease> selectNodes(HashMap<Integer, Task> tasks, Job job) {
 		HashMap<String, Lease> leases = new HashMap<String, Lease>();
-		long leaseTime = 10000;
+		long leaseTime = Long.MAX_VALUE;
 		
 		for (Integer taskId: tasks.keySet()) {
 			// Randomly select nodes and lease for 1 minute
 			for (String nodeId: nodeStatus.keySet()) {
-				if (Integer.parseInt(nodeStatus.get(nodeId).getNote()) > 0 || temporaryNodeTaskMapping.containsKey(nodeId)) {
+				if (Integer.parseInt(nodeStatus.get(nodeId).getNote()) > 0 || 
+						temporaryNodeTaskMapping.containsKey(nodeId) || 
+						scheduledNodes.containsKey(nodeId)) {
 					// this node is not available or has been selected for another task
 					continue;
 				}

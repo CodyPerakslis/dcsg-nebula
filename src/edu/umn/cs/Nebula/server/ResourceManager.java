@@ -107,8 +107,6 @@ public class ResourceManager {
 		System.out.print("[RM] Setting up resource manager ...");
 		Thread nodeMonitorThread = new Thread(new MonitorThread());
 		nodeMonitorThread.start();
-		// Thread statusThread = new Thread(new StatusThread());
-		// statusThread.start();
 		System.out.println("[OK]");
 		
 		// Listening for client requests
@@ -187,36 +185,6 @@ public class ResourceManager {
 		}
 	}
 	
-	private static class StatusThread implements Runnable {
-		private static final long printInterval = 10000;
-		
-		@Override
-		public void run() {
-			while (true) {
-				if (nodes.isEmpty()) {
-					System.out.println("[RM] No online nodes.");
-				} else {
-					synchronized (nodesLock) {
-						for (String nodeId: nodes.keySet()) {
-							if (busyNodes.containsKey(nodeId)) {
-								System.out.println(nodeId + ": " + busyNodes.get(nodeId).getScheduler() + ", " + busyNodes.get(nodeId).getRemainingTime());
-							} else {
-								System.out.println(nodeId + ": none, 0.0");
-							}
-						}
-					}
-				}
-				
-				try {
-					Thread.sleep(printInterval);
-				} catch (InterruptedException e) {
-					System.out.println("[RM] Sleep interrupted: " + e);
-				}
-			}
-		}
-		
-	}
-
 	/**
 	 * Scheduler handler class which communicates with a scheduler for leasing and acquiring nodes.
 	 * 
