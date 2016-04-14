@@ -113,6 +113,7 @@ public class TestApp {
 		@Override
 		public void run() {
 			String newIp = nodeIp;
+			String jsonReply;
 			
 			while (true) {
 				synchronized (lock) {
@@ -131,7 +132,9 @@ public class TestApp {
 					pw.println(gson.toJson(request));
 					pw.flush();
 					try {
-						reply = gson.fromJson(br.readLine(), ComputeRequest.class);
+						jsonReply = br.readLine();
+						System.out.println(jsonReply);
+						reply = gson.fromJson(jsonReply, ComputeRequest.class);
 						System.out.println("[APP] Latency: " + (System.currentTimeMillis() - reply.getTimestamp()) + " ms.");
 						if (reply.getNodeIp() != null && !reply.getNodeIp().isEmpty()) {
 							newIp = request.getNodeIp();

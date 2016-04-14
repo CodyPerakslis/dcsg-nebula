@@ -175,6 +175,7 @@ public class ComputeNode extends Node {
 		private static final int bufferSize = 4 * 1024;
 		private static final int timeout = 10000;
 		private static Gson gson = new Gson();
+		private long latency = -1;
 		
 		NodeThread(Socket sock, JobType type) {
 			clientSock = sock;
@@ -205,14 +206,14 @@ public class ComputeNode extends Node {
 			ComputeRequestType requestType = request.getRequestType();
 			
 			if (requestType.equals(ComputeRequestType.PING)) {
-				System.out.println("[COMPUTE] Received a PING message.");
+				System.out.println("[COMPUTE] PING from " + request.getMyIp() + " (" + latency + " ms)");
 				ComputeRequest reply = new ComputeRequest(request.getNodeIp(), JobType.MOBILE, ComputeRequestType.PING);
 				reply.setNodeIp(request.getNodeIp());
 				reply.setTimestamp(System.currentTimeMillis());
 				pw.println(gson.toJson(reply));
 				pw.flush();
 			} else if (requestType.equals(ComputeRequestType.GETFILE)) {
-				System.out.println("[COMPUTE] Reveiced a GETFILE message.");
+				System.out.println("[COMPUTE] GETFILE from " + request.getMyIp() + " (" + latency + " ms)");
 				if (request.getContents() == null || request.getContents().isEmpty()) {
 					pw.println("Undefined contents.");
 					pw.flush();
@@ -229,7 +230,6 @@ public class ComputeNode extends Node {
 		public void run() {
 			BufferedReader in = null;
 			PrintWriter out = null;
-			long latency = -1;
 			
 			try {		
 				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
@@ -241,7 +241,6 @@ public class ComputeNode extends Node {
 				while (true) {
 					request = gson.fromJson(in.readLine(), ComputeRequest.class);
 					latency = System.currentTimeMillis() - request.getTimestamp();
-					System.out.println("[COMPUTE] Latency from " + request.getMyIp() + ": " + latency + " ms.");
 					
 					if (!request.getJobType().equals(type)) {
 						System.out.println("[COMPUTE] Invalid job type: " + request.getJobType());
