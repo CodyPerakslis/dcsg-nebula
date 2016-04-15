@@ -131,7 +131,6 @@ public class ComputeNode extends Node {
 				return false;
 			}
 		}
-		System.out.println("[COMPUTE] id:" + id + "\t ip:" + ip);
 		return true;
 	}
 		

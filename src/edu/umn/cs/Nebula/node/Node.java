@@ -49,7 +49,7 @@ public abstract class Node {
 					PrintWriter out = new PrintWriter(conn.getOutputStream());
 					if (id == null) {
 						parseNodeRequest();
-						System.out.println("[NODE] id: " + id);
+						System.out.println("[NODE] id: " + id + " lat: " + latitude + " lon: " + longitude);
 					}
 					out.write("id=" + id + "&requestType=ONLINE&nodeType=" + type + "&latitude=" + latitude + "&longitude=" + longitude);
 					out.flush();
@@ -80,11 +80,7 @@ public abstract class Node {
 		}
 		
 		/**
-		 * Parse a node information from a HttpServletRequest.
-		 * 
-		 * @param request
-		 * @param nodeType
-		 * @return
+		 * Get node information (id, ip, latitude, longitude)
 		 */
 		private void parseNodeRequest() {
 			// Get the location of the ip address
@@ -97,16 +93,14 @@ public abstract class Node {
 				ipLookupConn.connect();
 
 				BufferedReader br = new BufferedReader(new InputStreamReader(ipLookupConn.getInputStream()));
-
 				String line = null;
 				String data = "";
 				while((line = br.readLine()) != null) {
 					data += line;
 				}
-
+				
 				JsonParser parser = new JsonParser();
 				JsonObject jsonData = parser.parse(data).getAsJsonObject();
-
 				if (jsonData.get("loc") == null) {
 					// location not found
 					System.out.println("Location not found: " + jsonData);
@@ -116,9 +110,9 @@ public abstract class Node {
 					latitude = Double.parseDouble(coordinate[0]);
 					longitude = Double.parseDouble(coordinate[1]);
 				}
-
 				// create a new node object
 				ip = ip.substring(1, ip.length()-1);
+				id = ip;
 			} catch(IOException e) {
 				System.out.println("[NODE] Failed connecting to ip look up service: " + e);
 			}
