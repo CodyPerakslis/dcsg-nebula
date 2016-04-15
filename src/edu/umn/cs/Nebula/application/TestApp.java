@@ -18,7 +18,7 @@ import edu.umn.cs.Nebula.request.ComputeRequestType;
 
 public class TestApp {
 
-	private static String nodeIp = "128.101.34.24";
+	private static String nodeIp = "134.84.121.87";
 	private static int nodePort = 2020;
 	private static final int bufferSize = 4 * 1024;
 	private static Gson gson = new Gson();

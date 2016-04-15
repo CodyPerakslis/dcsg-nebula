@@ -8,11 +8,15 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 public abstract class Node {
 	
 	public static String id = null;
 	public static String ip = null;
+	public static Double latitude = Double.MIN_VALUE;
+	public static Double longitude = Double.MIN_VALUE;
 	
 	public static void connect(String monitorUrl, NodeType type) {
 		Thread pingThread = new Thread(new PingThread(monitorUrl, type));
@@ -44,7 +48,7 @@ public abstract class Node {
 
 					PrintWriter out = new PrintWriter(conn.getOutputStream());
 					if (id == null) {
-						out.write("requestType=ONLINE&nodeType=" + type);
+						parseNodeRequest();
 					} else {
 						out.write("id=" + id + "&requestType=ONLINE&nodeType=" + type);
 					}
@@ -72,6 +76,51 @@ public abstract class Node {
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
+			}
+		}
+		
+		/**
+		 * Parse a node information from a HttpServletRequest.
+		 * 
+		 * @param request
+		 * @param nodeType
+		 * @return
+		 */
+		private void parseNodeRequest() {
+			// Get the location of the ip address
+			try {
+				// get the node's ip address
+				URL ipLookupURL;
+				ipLookupURL = new URL(String.format("http://ipinfo.io/json"));
+				HttpURLConnection ipLookupConn = (HttpURLConnection) ipLookupURL.openConnection();
+				ipLookupConn.setRequestMethod("GET");
+				ipLookupConn.connect();
+
+				BufferedReader br = new BufferedReader(new InputStreamReader(ipLookupConn.getInputStream()));
+
+				String line = null;
+				String data = "";
+				while((line = br.readLine()) != null) {
+					data += line;
+				}
+
+				JsonParser parser = new JsonParser();
+				JsonObject jsonData = parser.parse(data).getAsJsonObject();
+
+				if (jsonData.get("loc") == null) {
+					// location not found
+					System.out.println("Location not found: " + jsonData);
+				} else {
+					String[] coordinate = jsonData.get("loc").toString().replace("\"", "").split(",");
+					ip = jsonData.get("ip").toString();
+					latitude = Double.parseDouble(coordinate[0]);
+					longitude = Double.parseDouble(coordinate[1]);
+				}
+
+				// create a new node object
+				ip = ip.substring(1, ip.length()-1);
+			} catch(IOException e) {
+				System.out.println("[NODE] Failed connecting to ip look up service: " + e);
 			}
 		}
 	}
