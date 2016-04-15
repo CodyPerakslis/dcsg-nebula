@@ -23,6 +23,13 @@ public class NodeInfo implements Serializable {
 		this.lastOnline = System.currentTimeMillis();
 	}
 	
+	public NodeInfo(String id, String ip, NodeType nodeType) {
+		this.id = id;
+		this.ip = ip;
+		this.nodeType = nodeType;
+		this.lastOnline = System.currentTimeMillis();
+	}
+	
 	public void setId(String id) {
 		this.id = id;
 	}

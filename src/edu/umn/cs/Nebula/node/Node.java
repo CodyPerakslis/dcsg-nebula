@@ -49,9 +49,9 @@ public abstract class Node {
 					PrintWriter out = new PrintWriter(conn.getOutputStream());
 					if (id == null) {
 						parseNodeRequest();
-					} else {
-						out.write("id=" + id + "&requestType=ONLINE&nodeType=" + type);
+						System.out.println("[NODE] id: " + id);
 					}
+					out.write("id=" + id + "&requestType=ONLINE&nodeType=" + type + "&latitude=" + latitude + "&longitude=" + longitude);
 					out.flush();
 					conn.connect();
 					
