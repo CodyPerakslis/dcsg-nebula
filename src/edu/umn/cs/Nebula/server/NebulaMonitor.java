@@ -18,12 +18,10 @@ import edu.umn.cs.Nebula.node.NodeType;
 import edu.umn.cs.Nebula.request.NodeRequest;
 
 public class NebulaMonitor {
-	private static final long maxInactive = 8000; // in milliseconds
+	private static final long maxInactive = 8000; 	// in milliseconds
 	private static final int updateInterval = 5000; // in milliseconds
 	private static final int port = 6422;
 	private static final int poolSize = 30;
-
-	private static long now;
 
 	private static HashMap<String, NodeInfo> computeNodes = new HashMap<String, NodeInfo>();
 	private static HashMap<String, NodeInfo> storageNodes = new HashMap<String, NodeInfo>();
@@ -60,26 +58,25 @@ public class NebulaMonitor {
 
 	/**
 	 * This thread class will periodically monitor the status of every node.
-	 * If a node is inactive for >= {@code maxInactive}, the node will be considered offline.
+	 * If a node has been inactive for > {@code maxInactive}, the node will be considered offline
+	 * and removed from the list of online nodes.
 	 * 
 	 * @author albert
-	 *
 	 */
 	private static class NodeMonitorThread implements Runnable {
-
 		@Override
 		public void run() {
+			long now;
 			NodeInfo nodeInfo = null;
 			HashSet<String> removedNodes = new HashSet<String>();
 
 			while (true) {
 				now = System.currentTimeMillis();
 
-				// find inactive compute nodes
 				synchronized (computeNodesLock) {
 					for (String nodeId: computeNodes.keySet()) {
 						nodeInfo = computeNodes.get(nodeId);
-
+						// find inactive compute nodes
 						if (now - nodeInfo.getLastOnline() > maxInactive) {
 							removedNodes.add(nodeId);
 						}
@@ -90,11 +87,10 @@ public class NebulaMonitor {
 				}
 				removedNodes.clear();
 
-				// find inactive storage nodes
 				synchronized (storageNodesLock) {
 					for (String nodeId: storageNodes.keySet()) {
 						nodeInfo = storageNodes.get(nodeId);
-
+						// find inactive storage nodes
 						if (now - nodeInfo.getLastOnline() > maxInactive) {
 							removedNodes.add(nodeId);
 						}
@@ -116,6 +112,7 @@ public class NebulaMonitor {
 
 	/**
 	 * This thread class will handle any request from the node/end-user.
+	 * 
 	 * @author albert
 	 *
 	 */
@@ -144,34 +141,29 @@ public class NebulaMonitor {
 				if (nodeRequest != null) {
 					switch (nodeRequest.getType()) {
 					case ONLINE:
-					case OFFLINE:
-						// handle heartbeat from a node
-						NodeInfo node = handleHeartbeat(nodeRequest);
-						System.out.println("[MONITOR] Node:" + node.getIp() + ", lat=" + node.getLatitude() + ", lon=" + node.getLongitude());
-						out.println(gson.toJson(node));
+					case OFFLINE:	// handle online/offline message from a node
+						boolean success = handleHeartbeat(nodeRequest);
+						out.println(gson.toJson(success));
 						break;
-					case COMPUTE:
-						// handle get a list of compute nodes
+					case COMPUTE:	// handle get a list of compute nodes
 						result.putAll(computeNodes);
 						out.println(gson.toJson(result));
 						break;
-					case STORAGE:
-						// handle get a list of storage nodes
+					case STORAGE:	// handle get a list of storage nodes
 						result.putAll(storageNodes);
 						out.println(gson.toJson(result));
 						break;
-					case ALL:
-						// handle get a list of all nodes
+					case ALL:	// handle get a list of all nodes
 						result.putAll(computeNodes);
 						result.putAll(storageNodes);
 						out.println(gson.toJson(result));
 						break;
 					default:
-						System.out.println("[MONITOR] Request not found. Type: " + nodeRequest.getType());
+						System.out.println("[MONITOR] Invalid node request type: " + nodeRequest.getType());
 						out.println(gson.toJson(result));
 					}
 				} else {
-					System.out.println("[MONITOR] Request not found.");
+					System.out.println("[MONITOR] Request not found or invalid.");
 					out.println(gson.toJson(result));
 				}
 				out.flush();
@@ -189,18 +181,18 @@ public class NebulaMonitor {
 		}
 
 		/**
-		 * Handle a heartbeat request from a node.
+		 * Handle an online/offline message from a node.
 		 * 
 		 * @param request
-		 * @return
+		 * @return is success?
 		 */
-		private NodeInfo handleHeartbeat(NodeRequest request) {
+		private boolean handleHeartbeat(NodeRequest request) {
 			NodeInfo node = request.getNode();
-			NodeInfo result = node;
+			boolean success = false;
 
-			if (node == null) {
-				System.out.println("[MONITOR] Invalid node.");
-				return null;
+			if (node == null || node.getNodeType() == null) {
+				System.out.println("[MONITOR] No/invalid node information is found.");
+				return success;
 			}
 
 			switch (request.getType()) {
@@ -214,6 +206,7 @@ public class NebulaMonitor {
 							computeNodes.put(node.getId(), node);
 						}
 					}
+					success = true;
 				} else if (node.getNodeType().equals(NodeType.STORAGE)) {
 					synchronized (storageNodesLock) {
 						if (storageNodes.containsKey(node.getId())) {
@@ -222,25 +215,27 @@ public class NebulaMonitor {
 							storageNodes.put(node.getId(), node);
 						}
 					}
+					success = true;
 				}
 				break;
 			case OFFLINE:
 				// a request indicating that the node is going to be offline/inactive
 				if (node.getNodeType().equals(NodeType.COMPUTE)) {
 					synchronized (computeNodesLock) {
-						result = computeNodes.remove(node.getId());
+						computeNodes.remove(node.getId());
 					}
+					success = true;
 				} else if (node.getNodeType().equals(NodeType.STORAGE)) {
 					synchronized (storageNodesLock) {
-						result = storageNodes.remove(node.getId());
+						storageNodes.remove(node.getId());
 					}
+					success = true;
 				}
 				break;
 			default:
-				System.out.println("[MONITOR] Invalid node request type: " + request.getType());
-				result = null;
+				System.out.println("[MONITOR] Invalid node type: " + request.getType());
 			}
-			return result;
+			return success;
 		}
 	}
 }

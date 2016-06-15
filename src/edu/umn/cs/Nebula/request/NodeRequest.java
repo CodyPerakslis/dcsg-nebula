@@ -6,6 +6,10 @@ public class NodeRequest {
 	private NodeInfo node;
 	private NodeRequestType type;
 	
+	public NodeRequest(NodeRequestType type) {
+		this.type = type;
+	}
+	
 	public NodeRequest(NodeInfo node, NodeRequestType type) {
 		this.node = node;
 		this.type = type;
