@@ -18,13 +18,14 @@ import edu.umn.cs.Nebula.node.NodeType;
 import edu.umn.cs.Nebula.request.NodeRequest;
 
 public class NebulaMonitor {
-	private static final long maxInactive = 8000; 	// in milliseconds
-	private static final int updateInterval = 5000; // in milliseconds
+	private static final long maxInactive = 5000; 	// in milliseconds
+	private static final int updateInterval = 2000; // in milliseconds
 	private static final int port = 6422;
 	private static final int poolSize = 30;
 
 	private static HashMap<String, NodeInfo> computeNodes = new HashMap<String, NodeInfo>();
 	private static HashMap<String, NodeInfo> storageNodes = new HashMap<String, NodeInfo>();
+	private static Gson gson = new Gson();
 
 	private static final Object computeNodesLock = new Object();
 	private static final Object storageNodesLock = new Object();
@@ -128,7 +129,6 @@ public class NebulaMonitor {
 			BufferedReader in = null;
 			PrintWriter out = null;
 			HashMap<String, NodeInfo> result = new HashMap<String, NodeInfo>();
-			Gson gson = new Gson();
 
 			try {
 				in = new BufferedReader(new InputStreamReader (clientSock.getInputStream()));
@@ -150,11 +150,6 @@ public class NebulaMonitor {
 						out.println(gson.toJson(result));
 						break;
 					case STORAGE:	// handle get a list of storage nodes
-						result.putAll(storageNodes);
-						out.println(gson.toJson(result));
-						break;
-					case ALL:	// handle get a list of all nodes
-						result.putAll(computeNodes);
 						result.putAll(storageNodes);
 						out.println(gson.toJson(result));
 						break;

@@ -24,20 +24,20 @@ import edu.umn.cs.Nebula.request.ComputeRequestType;
 public class ComputeNode extends Node {
 	private static final int max_failure = 5;
 	private static final int interval = 2000; // in milliseconds
-	private static Task task = null;
 	private static final int poolSize = 10;
 	private static final int requestPort = 2020;
 	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/WebInterface";
+	
+	private static Task task = null;
+	private static Gson gson = new Gson();
 
 	/**
 	 * Get a task from Nebula from Nebula.
 	 * 
 	 * @return Task
 	 */
-	private static Task getTask() {
-		Gson gson = new Gson();
+	private static void getTask() {
 		BufferedReader in = null;
-		Task task = null;
 
 		try {
 			URL url = new URL(nebulaUrl);
@@ -61,9 +61,7 @@ public class ComputeNode extends Node {
 			}
 		} catch (IOException e) {
 			System.out.println("[COMPUTE] Failed connecting to Nebula: " + e);
-			e.printStackTrace();
 		}
-		return task;
 	}
 	
 	/**
@@ -80,7 +78,7 @@ public class ComputeNode extends Node {
 			Process childProcess = Runtime.getRuntime().exec(command);
 			exitCode = childProcess.waitFor();
 		} catch (IOException | InterruptedException e) {
-			System.out.println("[COMPUTE] Failed executing a child process: " + e);
+			System.out.println("[COMPUTE] Failed executing '" + command + "': " + e);
 		}
 		return exitCode;
 	}
@@ -95,11 +93,9 @@ public class ComputeNode extends Node {
 	}
 	
 	/**
-	 * Here, the compute node is performing as a server that listens to clients on a specific port.
-	 * 
-	 * @param exe
+	 * Here, the compute node is performing as a client-server that listens to end users on a specific port.
 	 */
-	private static void runServerTask(String exe) {
+	private static void runServerTask() {
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
 
@@ -111,7 +107,7 @@ public class ComputeNode extends Node {
 				requestPool.submit(new NodeThread(serverSock.accept(), task.getType()));
 			}
 		} catch (IOException e) {
-			System.err.println("[COMPUTE] Failed to establish listening socket: " + e);
+			System.err.println("[COMPUTE] Failed listening: " + e);
 		}
 	}
 	
@@ -136,13 +132,13 @@ public class ComputeNode extends Node {
 		
 	public static void main(String args[]) throws InterruptedException {
 		connect(nebulaUrl, NodeType.COMPUTE);
-		if (!isReady()) {
-			return;
-		}
+		if (!isReady()) return;
 		
 		// Starting Task Fetcher
 		while (true) {
-			task = getTask();
+			/*
+			if (task == null)
+				getTask();
 
 			if (task == null) {
 				System.out.println("[COMPUTE] No task.");
@@ -155,17 +151,19 @@ public class ComputeNode extends Node {
 					runTask(exe);
 					break;
 				case MOBILE:
-					runServerTask(exe);
+					runServerTask();
 					break;
 				default:
 					System.out.println("[COMPUTE] Undefined handler for task of type: " + task.getType());
 				}
 			}
+			*/
+			runServerTask();
 		}
 	}
 	
 	/**
-	 * This thread is invoked when a request arrives to the compute node.
+	 * This thread is invoked when the node receives a request.
 	 * Handle the request depending on the type of the task.
 	 */
 	public static class NodeThread implements Runnable {
@@ -173,10 +171,9 @@ public class ComputeNode extends Node {
 		private final JobType type;
 		private static final int bufferSize = 4 * 1024;
 		private static final int timeout = 10000;
-		private static Gson gson = new Gson();
 		private long latency = -1;
 		
-		NodeThread(Socket sock, JobType type) {
+		private NodeThread(Socket sock, JobType type) {
 			clientSock = sock;
 			this.type = type;
 		}
@@ -195,8 +192,8 @@ public class ComputeNode extends Node {
 				}
 				in.close();
 			} catch (IOException e) {
-				System.out.println("Failed reading file: " + filename + ": " + e.getMessage());
-				new PrintWriter(out).println("Failed getting file: " + filename + ": " + e.getMessage());
+				System.out.println("[COMPUTE] Failed reading " + filename + ": " + e.getMessage());
+				new PrintWriter(out).println("Failed getting " + filename + ": " + e.getMessage());
 			}
 		}
 
@@ -233,7 +230,6 @@ public class ComputeNode extends Node {
 			try {		
 				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
 				out = new PrintWriter(clientSock.getOutputStream());
-				
 				clientSock.setSoTimeout(timeout);
 
 				ComputeRequest request;
@@ -258,7 +254,6 @@ public class ComputeNode extends Node {
 					}
 					out.flush();
 				}
-				
 			} catch (InterruptedIOException e) {
 				try {
 					in.close();
