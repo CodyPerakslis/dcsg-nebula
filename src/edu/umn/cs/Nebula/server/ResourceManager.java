@@ -29,6 +29,7 @@ import edu.umn.cs.Nebula.request.SchedulerRequest;
 public class ResourceManager {	
 	private static final int schedulerPort = 6424;
 	private static final int poolSize = 10;
+	private static final Gson gson = new Gson();
 
 	private static HashMap<String, NodeInfo> nodes = new HashMap<String, NodeInfo>();
 	private static HashMap<String, Lease> busyNodes = new HashMap<String, Lease>();
@@ -57,8 +58,8 @@ public class ResourceManager {
 
 		synchronized (nodesLock) {
 			for (String nodeId: leaseRequest.getLeaseNodes()) {
-				// the node is not available
 				if (nodes.get(nodeId) == null) {
+					// The node is not available
 					System.out.println("[RM] " + nodeId + " is not available."); 
 					continue;
 				}
@@ -66,12 +67,15 @@ public class ResourceManager {
 				if (busyNodes.containsKey(nodeId)) {
 					if (busyNodes.get(nodeId).getScheduler() != null && 
 							!busyNodes.get(nodeId).getScheduler().equals(leaseRequest.getSchedulerName())) {
-						// do not let a scheduler to acquire a node that has already been claimed by other scheduler
+						// Do not let a scheduler acquire a node that has already been claimed by another scheduler
 						System.out.println("[RM] " + nodeId + " is busy."); 
 						continue;
 					}
 				}
-				// create a new lease
+				
+				// TODO add more conditions/constraints such as lease time limit etc.
+				
+				// Success. Create a new lease
 				busyNodes.put(nodeId, leaseRequest.getLease(nodeId));
 				successfullyLeasedNodes.put(nodeId, leaseRequest.getLease(nodeId));
 			}
@@ -90,12 +94,11 @@ public class ResourceManager {
 		synchronized (nodesLock) {
 			for (String nodeId: leaseRequest.getNodes()) {
 				if (nodes.get(nodeId) == null || busyNodes.get(nodeId) == null) {
-					// ignore invalid node id
 					continue;
 				}
 				if (busyNodes.get(nodeId).getScheduler() != null && 
 						busyNodes.get(nodeId).getScheduler().equals(leaseRequest.getSchedulerName())) {
-					// free the node iff it is leased by the scheduler
+					// Free the node only if it is currently owned by the scheduler
 					busyNodes.remove(nodeId);
 				}
 			}
@@ -141,7 +144,7 @@ public class ResourceManager {
 	private static class MonitorThread implements Runnable {
 		private static final String monitorUrl = "localhost";
 		private static final int monitorPort = 6422;
-		private static final long updateInterval = 10000;
+		private static final long updateInterval = 5000;
 		private static Socket socket;
 
 		@Override
@@ -149,7 +152,6 @@ public class ResourceManager {
 			while (true) {
 				BufferedReader in = null;
 				PrintWriter out = null;
-				Gson gson = new Gson(); 
 
 				try {
 					socket = new Socket(monitorUrl, monitorPort);
@@ -157,7 +159,7 @@ public class ResourceManager {
 					in = new BufferedReader(new InputStreamReader (socket.getInputStream()));
 					out = new PrintWriter(socket.getOutputStream(), true);
 
-					// Send GET storage nodes request to NebulaMonitor
+					// Send GET compute nodes request to NebulaMonitor
 					NodeRequest request = new NodeRequest(null, NodeRequestType.COMPUTE);
 					out.println(gson.toJson(request));
 					out.flush();
@@ -200,7 +202,6 @@ public class ResourceManager {
 		public void run() {
 			PrintWriter out = null;
 			BufferedReader in = null;
-			Gson gson = new Gson();
 
 			try {
 				out = new PrintWriter(socket.getOutputStream());
@@ -216,7 +217,7 @@ public class ResourceManager {
 					
 					switch(request.getType()) {
 					case GET:
-						// Return the status of all nodes, including the busy nodes
+						// Return the status of all nodes, including the ones that are busy
 						HashMap<String, NodeInfo> activeNodes = new HashMap<String, NodeInfo>();
 
 						synchronized (nodesLock) {

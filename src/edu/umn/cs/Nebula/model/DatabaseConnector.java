@@ -13,20 +13,23 @@ public class DatabaseConnector {
 	private Connection dbConnection;
 
 	public DatabaseConnector(String username, String password, String serverName, String databaseName, int port) {
-		try {
-			// database setup
-			dataSource = new MysqlDataSource();
-			dataSource.setUser(username);
-			dataSource.setPassword(password);
-			dataSource.setServerName(serverName);
-			dataSource.setDatabaseName(databaseName);
-			dataSource.setPort(port);
+		// database setup
+		dataSource = new MysqlDataSource();
+		dataSource.setUser(username);
+		dataSource.setPassword(password);
+		dataSource.setServerName(serverName);
+		dataSource.setDatabaseName(databaseName);
+		dataSource.setPort(port);
+	}
 
+	public boolean connect() {
+		try {
 			dbConnection = (Connection) dataSource.getConnection();
+			return dbConnection != null;
 		} catch (SQLException e) {
-			System.out.println("[DBCONN] Failed to connect to the database.");
-			System.out.println(e.getMessage());
+			System.out.println("[DBCONN] Failed to connect to the database: " + e.getMessage());
 		}
+		return false;
 	}
 
 	public boolean updateQuery(String sqlStatement) {
@@ -39,10 +42,10 @@ public class DatabaseConnector {
 		}
 		return true;
 	}
-	
+
 	public ResultSet selectQuery(String sqlStatement) {
 		ResultSet resultSet;
-		
+
 		try {
 			Statement dbStatement = (Statement) dbConnection.createStatement();
 			resultSet = dbStatement.executeQuery(sqlStatement);
@@ -52,7 +55,7 @@ public class DatabaseConnector {
 		}
 		return resultSet;
 	}
-	
+
 	public boolean isConnected() {
 		try {
 			return dbConnection.isValid(5);

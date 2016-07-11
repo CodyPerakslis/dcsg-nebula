@@ -30,11 +30,11 @@ public class StorageNode extends Node {
 	private static final int maxTries = 5;
 	private static final String fileDirectory = "DSS";
 	private static final int bufferSize = 1024 * 64;
-	private static final int timeout = 10000;
+	private static final int timeout = 5000;
 
 	private static final String masterUrl = "134.84.121.87";
 	private static final int masterPort = 6423;
-	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/WebInterface";
+	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
 
 	private static LRUCache<String> cache;
 	private static final int cacheSize = 20;

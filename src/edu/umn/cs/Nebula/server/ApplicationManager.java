@@ -32,18 +32,19 @@ public class ApplicationManager {
 	private static String password = "kvm";
 	private static String serverName = "localhost";
 	private static String dbName = "nebula";
-	private static int dbPort = 3306;
+	private static int dbPort = 3307; // set to 3306 in hemant
 	private static DatabaseConnector dbConn;
 
 	private static Schedule schedule;
 	private static final Object scheduleLock = new Object();
+	private static final Gson gson = new Gson();
 
 	private static final int port = 6421;
 	private static final int poolSize = 20;
 
 	public static void main(String args[]) {		
 		if (args.length < 5) {
-			System.out.println("[AM] Using the default DB configuration.");
+			System.out.println("[AM] Using default DB configuration");
 		} else {
 			username = args[0];
 			password = args[1];
@@ -55,16 +56,14 @@ public class ApplicationManager {
 		// Setup the database connection
 		System.out.print("[AM] Connecting to the database ...");	
 		dbConn = new DatabaseConnector(username, password, serverName, dbName, dbPort);
-		if (dbConn == null) {
+		if (!dbConn.connect()) {
 			System.out.println("[FAILED]");
 			return;
 		} else {
 			System.out.println("[OK]");
 		}
 
-		// A list of tasks for each node
 		schedule = new Schedule();
-
 		// Setup thread list to handle application requests
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
@@ -72,7 +71,7 @@ public class ApplicationManager {
 			serverSock = new ServerSocket(port);
 			System.out.println("[AM] Listening for Application requests on port " + port);
 			while (true) {
-				requestPool.submit(new RequestThread(serverSock.accept()));
+				requestPool.submit(new RequestHandlerThread(serverSock.accept()));
 			}
 		} catch (IOException e) {
 			System.err.println("[AM] Failed to establish listening socket: " + e);
@@ -89,7 +88,7 @@ public class ApplicationManager {
 	}
 
 	/**
-	 * Get a new id for a new application/job/task.
+	 * Get an ID for a new application/job/task.
 	 * This method is called when generating a new application/job/task.
 	 * 
 	 * @param tablename (application/job/task)
@@ -106,141 +105,6 @@ public class ApplicationManager {
 			return -1;
 		}
 		return id;
-	}
-
-	/**
-	 * Get a list of {incomplete} application ids of a specific type.
-	 * 
-	 * @param type			Application type
-	 * @param incomplete	
-	 * @return
-	 */
-	private static ArrayList<Integer> getApplicationIds(ApplicationType type, boolean complete) {
-		ArrayList<Integer> result = new ArrayList<Integer>();
-
-		ResultSet rs = dbConn.selectQuery("SELECT id FROM application "
-				+ "WHERE type='" + type + "' AND active=true AND complete=" + complete + ";");
-		try {
-			while (rs.next()) {
-				result.add(rs.getInt(1));
-			}
-		} catch (SQLException e) {
-			System.out.println("[AM] Failed getting an application with id: " + e);
-		}
-		return result;
-	}
-
-	private static void addInputFiles(int jobId, Application app) {
-		if (jobId < 0 || app == null) {
-			System.out.println("[AM] Failed getting input files.");
-			return;
-		}
-
-		ResultSet rs = dbConn.selectQuery("SELECT filename FROM job_file WHERE id=" + jobId + ";");
-		String filename;
-		try {
-			while (rs.next()) {
-				filename = rs.getString("filename");
-				if (filename != null && !filename.isEmpty() && !app.getJob(jobId).getFileList().contains(filename)) {
-					app.getJob(jobId).addFile(filename);
-				}
-			}
-		} catch (SQLException e) {
-			System.out.println("[AM] Failed getting input files.");
-		}
-	}
-
-	private static void addDependencies(int jobId, Application app) {
-		if (jobId < 0 || app == null) {
-			System.out.println("[AM] Failed getting dependencies.");
-			return;
-		}
-
-		ResultSet rs = dbConn.selectQuery("SELECT dep_id FROM dependency WHERE id=" + jobId + ";");
-		int depId;
-		try {
-			while (rs.next()) {
-				depId = rs.getInt("dep_id");
-				if (depId > -1 && !app.getJob(jobId).getDependencies().contains(depId)) {
-					app.getJob(jobId).addDependency(depId);
-				}
-			}
-		} catch (SQLException e) {
-			System.out.println("[AM] Failed getting dependencies.");
-		}
-	}
-
-	private static boolean getJobs(Application app) {
-		int jobId = -1;
-		int priority;
-		boolean active;
-		boolean complete;
-
-		if (app == null) {
-			return false;
-		}
-
-		JobType jobType;
-		String exeFilename;
-		// Get all of the applicaiton's job information
-		ResultSet rs = dbConn.selectQuery("SELECT id, type, priority, active, complete, exe_filename FROM job WHERE app_id=" + app.getId() + ";");
-		try {
-			while (rs.next()) {
-				jobId = rs.getInt("id");
-				jobType = JobType.valueOf(rs.getString("type"));
-				priority = rs.getInt("priority");
-				active = rs.getBoolean("active");
-				complete = rs.getBoolean("complete");
-				exeFilename = rs.getString("exe_filename");
-
-				// add the job object to the application
-				Job job = new Job(jobId, app.getId(), priority, jobType);
-				job.setComplete(complete);
-				job.setActive(active);
-				job.setExeFile(exeFilename);
-				app.addJob(job);
-			}
-		} catch (SQLException e) {
-			return false;
-		}
-
-		return true;
-	}
-
-	private static boolean getTasks(int jobId, Application app) {
-		int taskId;
-		String completingNode;
-		String status;
-		boolean active;
-		boolean complete;
-		
-		if (jobId < 0 || app == null || app.getJob(jobId) == null) {
-			return false;
-		}
-		
-		// Get all tasks for each of the job
-		ResultSet rs = dbConn.selectQuery("SELECT id, completing_node, active, complete, status"
-				+ " FROM task WHERE job_id =" + jobId + ";");
-		try {
-			while (rs.next()) {
-				taskId = rs.getInt("id");
-				active = rs.getBoolean("active");
-				complete = rs.getBoolean("complete");
-				completingNode = rs.getString("completing_node");
-				status = rs.getString("status");
-
-				Task task = new Task(taskId, jobId);
-				task.setActive(active);
-				task.setComplete(complete);
-				task.setCompletedBy(completingNode);
-				task.setStatus(status);
-				app.getJob(jobId).addTask(task);
-			}
-		} catch (SQLException e) {
-			return false;
-		}
-		
-		return true;
 	}
 
 	/**
@@ -285,17 +149,204 @@ public class ApplicationManager {
 			System.out.println("[AM] Failed getting jobs for application of id: " + appId);
 			return null;
 		}
+		
 		// add all input files and dependencies (if any).
 		for (int jobId: app.getJobs().keySet()) {
-			addInputFiles(jobId, app);
-			addDependencies(jobId, app);
-			if (!getTasks(jobId, app)) {
+			addInputFiles(app.getJob(jobId));
+			addDependencies(app.getJob(jobId));
+			if (!getTasks(app.getJob(jobId))) {
 				System.out.println("[AM] Failed getting tasks for job " + jobId + " of application " + appId);
 				return null;
 			}
 		}
 
 		return app;
+	}
+
+	/**
+	 * Get a list of {incomplete} applications of a specific type.
+	 * 
+	 * @param type	Application type
+	 * @param complete	
+	 * @return
+	 */
+	private static ArrayList<Application> getApplications(ApplicationType type, boolean complete) {
+		ArrayList<Application> result = new ArrayList<Application>();
+
+		ResultSet rs = dbConn.selectQuery("SELECT * FROM application "
+				+ "WHERE type='" + type + "' AND active=true AND complete=" + complete + ";");
+
+		int appId;
+		String appName;
+		int priority;
+		boolean active;
+		Application app;
+
+		try {
+			while (rs.next()) {
+				// this should only go once since there should only be 1 application with 1 id
+				appId = rs.getInt("id");
+				appName = rs.getString("name");
+				priority = rs.getInt("priority");
+				active = rs.getBoolean("active");
+
+				app = new Application(appId, appName, type, priority);
+				app.setComplete(complete);
+				app.setActive(active);
+
+				if (!getJobs(app) || app.getJobs().size() < 1) {
+					System.out.println("[AM] Failed getting jobs for application of id: " + appId);
+					continue;
+				}
+				
+				// add all input files and dependencies (if any).
+				for (int jobId: app.getJobs().keySet()) {
+					addInputFiles(app.getJob(jobId));
+					addDependencies(app.getJob(jobId));
+					if (!getTasks(app.getJob(jobId))) {
+						System.out.println("[AM] Failed getting tasks for job " + jobId + " of application " + appId);
+						return null;
+					}
+				}
+
+				result.add(app);
+			}
+		} catch (SQLException e) {
+			System.out.println("[AM] Failed getting an applications of type " + type + ": " + e.getMessage());
+			return null;
+		}
+		return result;
+	}
+
+	/**
+	 * Add the input files of a specific job.
+	 * 
+	 * @param job
+	 */
+	private static void addInputFiles(Job job) {
+		if (job == null) {
+			System.out.println("[AM] Failed getting input files.");
+			return;
+		}
+
+		ResultSet rs = dbConn.selectQuery("SELECT filename FROM job_file WHERE id=" + job.getId() + ";");
+		String filename;
+		try {
+			while (rs.next()) {
+				filename = rs.getString("filename");
+				if (filename != null && !filename.isEmpty() && !job.getFileList().contains(filename)) {
+					job.addFile(filename);
+				}
+			}
+		} catch (SQLException e) {
+			System.out.println("[AM] Failed getting input files for job " + job.getId() + ": " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Add the dependency list of a specific job.
+	 * 
+	 * @param job
+	 */
+	private static void addDependencies(Job job) {
+		if (job == null) {
+			System.out.println("[AM] Failed getting dependencies.");
+			return;
+		}
+
+		ResultSet rs = dbConn.selectQuery("SELECT dep_id FROM dependency WHERE id=" + job.getId() + ";");
+		int depId;
+		try {
+			while (rs.next()) {
+				depId = rs.getInt("dep_id");
+				if (depId > -1 && !job.getDependencies().contains(depId)) {
+					job.addDependency(depId);
+				}
+			}
+		} catch (SQLException e) {
+			System.out.println("[AM] Failed getting dependency list for job " + job.getId() + ": " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Get a list of jobs belonging to a specific application.
+	 * 
+	 * @param app
+	 * @return
+	 */
+	private static boolean getJobs(Application app) {
+		int jobId = -1;
+		int priority;
+		boolean active;
+		boolean complete;
+
+		if (app == null)
+			return false;
+
+		JobType jobType;
+		String exeFilename;
+		// Get all of the applicaiton's job information
+		ResultSet rs = dbConn.selectQuery("SELECT id, type, priority, active, complete, exe_filename FROM job WHERE app_id=" + app.getId() + ";");
+		try {
+			while (rs.next()) {
+				jobId = rs.getInt("id");
+				jobType = JobType.valueOf(rs.getString("type"));
+				priority = rs.getInt("priority");
+				active = rs.getBoolean("active");
+				complete = rs.getBoolean("complete");
+				exeFilename = rs.getString("exe_filename");
+
+				// add the job object to the application
+				Job job = new Job(jobId, app.getId(), priority, jobType);
+				job.setComplete(complete);
+				job.setActive(active);
+				job.setExeFile(exeFilename);
+				app.addJob(job);
+			}
+		} catch (SQLException e) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Get a list of tasks belonging to a specific job.
+	 * 
+	 * @param job
+	 * @return
+	 */
+	private static boolean getTasks(Job job) {
+		int taskId;
+		String completingNode;
+		String status;
+		boolean active;
+		boolean complete;
+
+		if (job == null)
+			return false;
+
+		// Get all tasks for each of the job
+		ResultSet rs = dbConn.selectQuery("SELECT id, completing_node, active, complete, status"
+				+ " FROM task WHERE job_id =" + job.getId() + ";");
+		try {
+			while (rs.next()) {
+				taskId = rs.getInt("id");
+				active = rs.getBoolean("active");
+				complete = rs.getBoolean("complete");
+				completingNode = rs.getString("completing_node");
+				status = rs.getString("status");
+
+				Task task = new Task(taskId, job.getId());
+				task.setActive(active);
+				task.setComplete(complete);
+				task.setCompletedBy(completingNode);
+				task.setStatus(status);
+				job.addTask(task);
+			}
+		} catch (SQLException e) {
+			return false;
+		}
+		return true;
 	}
 
 	/**
@@ -568,6 +619,8 @@ public class ApplicationManager {
 		if (!successQuery) {
 			System.out.println("[MR] Failed saving a REDUCE job.");
 			return null;
+		} else {
+			System.out.println("[MR] REDUCE job created.");
 		}
 		successQuery = dbConn.updateQuery("INSERT INTO dependency (id, dep_id) " +
 				"VALUES (" + redJobId + ", " + mapJobId + ");");
@@ -632,19 +685,18 @@ public class ApplicationManager {
 		}
 	}
 
-	private static class RequestThread implements Runnable {
+	private static class RequestHandlerThread implements Runnable {
 		private final Socket clientSock;
 
-		public RequestThread(Socket sock) {
+		public RequestHandlerThread(Socket sock) {
 			clientSock = sock;
 		}
 
 		@Override
 		public void run() {
-			ArrayList<Integer> applicationIds = null;
+			ArrayList<Application> applications = null;
 			BufferedReader in = null;
 			PrintWriter out = null;
-			Gson gson = new Gson();
 
 			try {
 				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
@@ -658,7 +710,6 @@ public class ApplicationManager {
 
 				// Application request handler
 				if (appRequest != null && appRequest.getType() != null) {
-					// System.out.println("[AM] Received an application request: " + appRequest.getType());
 					switch (appRequest.getType()) {
 					case CREATE:
 						success = generateApplication(appRequest);
@@ -673,14 +724,13 @@ public class ApplicationManager {
 						out.println(gson.toJson(success));
 						break;
 					case GETINCOMPLETEAPP:
-						applicationIds = getApplicationIds(appRequest.getApplicationType(), false);
-						out.println(gson.toJson(applicationIds));
+						applications = getApplications(appRequest.getApplicationType(), false);
+						out.println(gson.toJson(applications));
 						break;
 					case GET:
 						Application app = null;
 						if (appRequest.getApplicationId() >= 0) {
 							app = getApplication(appRequest.getApplicationId());
-							// System.out.println("[AM] GET app: " + app.getId() + ", " + app.getName() + ", " + app.getApplicationType() + ", " + app.getNumJobs());
 						}
 						out.println(gson.toJson(app));
 						break;

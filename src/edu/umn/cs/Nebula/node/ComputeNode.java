@@ -26,7 +26,7 @@ public class ComputeNode extends Node {
 	private static final int interval = 2000; // in milliseconds
 	private static final int poolSize = 10;
 	private static final int requestPort = 2020;
-	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/WebInterface";
+	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
 	
 	private static Task task = null;
 	private static Gson gson = new Gson();

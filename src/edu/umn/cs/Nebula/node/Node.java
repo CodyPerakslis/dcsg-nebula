@@ -17,6 +17,7 @@ public abstract class Node {
 	public static String ip = null;
 	public static Double latitude = Double.MIN_VALUE;
 	public static Double longitude = Double.MIN_VALUE;
+	private static final Gson gson = new Gson();
 	
 	public static void connect(String monitorUrl, NodeType type) {
 		Thread pingThread = new Thread(new PingThread(monitorUrl, type));
@@ -35,7 +36,6 @@ public abstract class Node {
 		
 		@Override
 		public void run() {
-			Gson gson = new Gson();
 			BufferedReader in = null;
 			
 			while (true) {
