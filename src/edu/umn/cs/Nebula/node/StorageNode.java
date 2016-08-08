@@ -27,17 +27,18 @@ public class StorageNode extends Node {
 	private static final int poolSize = 10;
 	private static final int requestPort = 2021;
 	private static final int fileTransferPort = 2022;
-	private static final int maxTries = 5;
+	private static final int maxTrial = 5;
 	private static final String fileDirectory = "DSS";
 	private static final int bufferSize = 1024 * 64;
 	private static final int timeout = 5000;
 
-	private static final String masterUrl = "134.84.121.87";
-	private static final int masterPort = 6423;
+	private static final String dssMasterServer = "134.84.121.87";
+	private static final int dssMasterPort = 6423;
 	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
 
 	private static LRUCache<String> cache;
 	private static final int cacheSize = 20;
+	private static final Gson gson = new Gson();
 
 	public static void main(String args[]) {
 		connect(nebulaUrl, NodeType.STORAGE);
@@ -50,7 +51,7 @@ public class StorageNode extends Node {
 			serverSock = new ServerSocket(requestPort);
 			System.out.println("[DSS] Listening for client requests on port " + requestPort);
 			while (true) {
-				requestPool.submit(new RequestThread(serverSock.accept()));
+				requestPool.submit(new DSSHandlerThread(serverSock.accept()));
 			}
 		} catch (IOException e) {
 			System.err.println("[DSS] Failed to establish listening socket: " + e);
@@ -75,15 +76,13 @@ public class StorageNode extends Node {
 	 */
 	private static boolean reportNewFile(String namespace, String filename) {
 		boolean success = false;
-		Gson gson = new Gson();
-
 		Socket socket = null;
 		BufferedReader in = null;
 		PrintWriter out = null;
 
 		try {
 			// Connecting to DSS Master
-			socket = new Socket(masterUrl, masterPort);
+			socket = new Socket(dssMasterServer, dssMasterPort);
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			out = new PrintWriter(socket.getOutputStream());
 
@@ -185,11 +184,10 @@ public class StorageNode extends Node {
 		Socket socket = null;
 
 		File file = new File(fileDirectory + "/" + namespace + "-" + filename);
-		System.out.println("[DSS] Ready to upload " + file);
+		System.out.println("[DSS] Uploading " + file + " to " + destination);
 
 		try {
 			socket = new Socket(destination, fileTransferPort);
-
 			in = new FileInputStream(file);
 			out = socket.getOutputStream();
 
@@ -232,7 +230,7 @@ public class StorageNode extends Node {
 		boolean success = false;
 
 		File file = new File(fileDirectory + "/" + namespace + "-" + filename);
-		System.out.println("[DSS] Ready to download " + file);
+		// System.out.println("[DSS] Ready to download " + file);
 
 		try {
 			// Open a connection
@@ -254,17 +252,15 @@ public class StorageNode extends Node {
 
 			// Report to Nebula DSS Master
 			int numTries = 0;
-			while (!(success = reportNewFile(namespace, filename)) && numTries < maxTries) {
+			while (!(success = reportNewFile(namespace, filename)) && numTries < maxTrial) {
 				numTries++;
 				Thread.sleep(1000);
 			}
 
 			// If failed to report, remove the file. 
-			// This should not happen
-			if (!success && numTries >= maxTries) {
-				System.out.println("[DSS] Failed reporting to the DSS Master.");
+			if (!success && numTries >= maxTrial) {
+				System.out.println("[DSS] Failed reporting to the DSS Master. Removing the file.");
 				handleDelete(namespace, filename);
-				System.out.println("[DSS] Removing the file.");
 			}
 		} catch (IOException | InterruptedException e) {
 			System.out.println("[DSS] Exception in downloading a file: " + e);
@@ -297,7 +293,7 @@ public class StorageNode extends Node {
 		boolean success = false;
 
 		File file = new File(fileDirectory + "/" + namespace + "-" + filename);
-		System.out.println("[DSS] Ready to download " + file);
+		// System.out.println("[DSS] Ready to download " + file);
 
 		try {
 			// Establish a connection to the url
@@ -322,21 +318,19 @@ public class StorageNode extends Node {
 				while ((bytesRead = in.read(buffer)) != -1) {
 					out.write(buffer, 0, bytesRead);
 				}
-				System.out.println("[DSS] File downloaded");
+				System.out.println("[DSS] File download from " + url + " complete.");
 
 				// Report to Nebula DSS Master
 				int numTries = 0;
-				while (!(success = reportNewFile(namespace, filename)) && numTries < maxTries) {
+				while (!(success = reportNewFile(namespace, filename)) && numTries < maxTrial) {
 					numTries++;
 					Thread.sleep(1000);
 				}
 
 				// If failed to report, remove the file. 
-				// This should not happen
-				if (!success && numTries >= maxTries) {
-					System.out.println("[DSS] Failed reporting to the DSS Master.");
+				if (!success && numTries >= maxTrial) {
+					System.out.println("[DSS] Failed reporting to the DSS Master. Removing the file.");
 					handleDelete(namespace, filename);
-					System.out.println("[DSS] Removing the file.");
 				}
 			} else {
 				System.out.println("[DSS] Download URL fails. HTTP response code: " + responseCode);
@@ -369,7 +363,6 @@ public class StorageNode extends Node {
 		PrintWriter out = null;
 		boolean success = false;
 
-		Gson gson = new Gson();
 		Socket socket = null;
 		DSSRequest request = null;
 
@@ -385,7 +378,7 @@ public class StorageNode extends Node {
 			out = new PrintWriter(socket.getOutputStream());
 
 			System.out.println("[DSS] Getting a file from the DSS: " + ip);
-			request = new DSSRequest(DSSRequestType.GETFILE, namespace, filename);
+			request = new DSSRequest(DSSRequestType.UPLOAD, namespace, filename);
 			request.setNodeId(ip);
 			out.println(gson.toJson(request));
 			out.flush();
@@ -417,10 +410,10 @@ public class StorageNode extends Node {
 		return success;
 	}
 
-	private static class RequestThread implements Runnable {
+	private static class DSSHandlerThread implements Runnable {
 		private final Socket clientSock;
 
-		public RequestThread(Socket sock) {
+		public DSSHandlerThread(Socket sock) {
 			clientSock = sock;
 		}
 
@@ -428,7 +421,6 @@ public class StorageNode extends Node {
 		public void run() {
 			BufferedReader in = null;
 			PrintWriter out = null;
-			Gson gson = new Gson();
 			boolean response = false;
 
 			try {
@@ -436,9 +428,9 @@ public class StorageNode extends Node {
 				out = new PrintWriter(clientSock.getOutputStream());
 
 				DSSRequest request = gson.fromJson(in.readLine(), DSSRequest.class);
-				if (request != null) {
+				if (request != null && request.getNamespace() != null && request.getFilename() != null) {
 					String filenameCombination = null;
-					System.out.println("[DSS] Received a " + request.getType() + " request");
+					System.out.println("[DSS] Handling " + request.getType() + " request");
 
 					switch (request.getType()) {
 					case DOWNLOAD:
@@ -462,7 +454,7 @@ public class StorageNode extends Node {
 									filenameCombination.split("-")[1],
 									request.getNote());
 						} break;
-					case GETFILE:
+					case UPLOAD:
 						filenameCombination = createNewFile(request.getNamespace(), request.getFilename());
 						if (request.getNodeId() != null && filenameCombination != null) {
 							response = uploadFile(

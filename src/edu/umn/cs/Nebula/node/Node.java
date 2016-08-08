@@ -19,18 +19,18 @@ public abstract class Node {
 	public static Double longitude = Double.MIN_VALUE;
 	private static final Gson gson = new Gson();
 	
-	public static void connect(String monitorUrl, NodeType type) {
-		Thread pingThread = new Thread(new PingThread(monitorUrl, type));
+	public static void connect(String url, NodeType type) {
+		Thread pingThread = new Thread(new PingThread(url, type));
 		pingThread.start();
 	}
 
 	private static class PingThread implements Runnable {
-		private final String monitorUrl;
+		private final String server;
 		private final NodeType type;
 		private final int pingInterval = 2000; // in milliseconds
 		
-		private PingThread(String monitorUrl, NodeType type) {
-			this.monitorUrl = monitorUrl;
+		private PingThread(String url, NodeType type) {
+			this.server = url;
 			this.type = type;
 		}
 		
@@ -40,7 +40,7 @@ public abstract class Node {
 			
 			while (true) {
 				try {
-					URL url = new URL(monitorUrl);
+					URL url = new URL(server);
 					HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 					conn.setRequestMethod("POST");
 					conn.setDoInput(true);
