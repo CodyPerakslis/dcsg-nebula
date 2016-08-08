@@ -11,15 +11,12 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import redis.clients.jedis.Jedis;
-
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 
 import edu.umn.cs.Nebula.node.NodeInfo;
 import edu.umn.cs.Nebula.request.DSSRequest;
 import edu.umn.cs.Nebula.request.NodeRequest;
-import edu.umn.cs.Nebula.request.NodeRequestType;
+import redis.clients.jedis.Jedis;
 
 public class NebulaDSSMaster {
 
@@ -29,28 +26,27 @@ public class NebulaDSSMaster {
 	private static Jedis jedis;
 	private static final String jedisServer = "localhost";
 	private static final int jedisPort = 6379;
+	private static final Gson gson = new Gson();
 
 	private static HashMap<String, NodeInfo> storageNodes;
 	private static final Object nodesLock = new Object();
 
 	public static void main(String args[]) {
-		System.out.println("[DSSMaster] Initizalizing redis connection");
+		// connect to the database
+		System.out.print("[DSSMaster] Initizalizing database connection ... ");
 		storageNodes = new HashMap<String, NodeInfo>();
 		jedis = new Jedis(jedisServer, jedisPort);
 		jedis.connect();
+		System.out.println("[OK]");
 
-		System.out.println("[DSSMaster] Connecting to Monitor");
-		Thread monitorThread = new Thread(new MonitorThread());
-		monitorThread.start();
-
+		// listen to DSS requests
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
-
 		try {
 			serverSock = new ServerSocket(port);
 			System.out.println("[DSSMaster] Listening for DSS requests on port " + port);
 			while (true) {
-				requestPool.submit(new RequestThread(serverSock.accept()));
+				requestPool.submit(new DSSThread(serverSock.accept()));
 			}
 		} catch (IOException e) {
 			System.err.println("[DSSMaster] Failed to establish listening socket: " + e);
@@ -71,7 +67,6 @@ public class NebulaDSSMaster {
 	 * from Nebula Monitor.
 	 * @author albert
 	 *
-	 */
 	private static class MonitorThread implements Runnable {
 		private static final String monitorUrl = "localhost";
 		private static final int monitorPort = 6422;
@@ -120,11 +115,12 @@ public class NebulaDSSMaster {
 			}
 		}
 	}
+		 */
 
-	private static class RequestThread implements Runnable {
+	private static class DSSThread implements Runnable {
 		private final Socket clientSock;
 
-		public RequestThread(Socket sock) {
+		public DSSThread(Socket sock) {
 			clientSock = sock;
 		}
 
@@ -132,41 +128,65 @@ public class NebulaDSSMaster {
 		public void run() {
 			BufferedReader in = null;
 			PrintWriter out = null;
-			Gson gson = new Gson();
 
 			try {
 				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
 				out = new PrintWriter(clientSock.getOutputStream());
 
-				DSSRequest request = gson.fromJson(in.readLine(), DSSRequest.class);
+				String request = in.readLine();
+
+				DSSRequest dssRequest = gson.fromJson(request, DSSRequest.class);
+				NodeRequest nodeRequest = gson.fromJson(request, NodeRequest.class);
 				HashMap<String, NodeInfo> nodes = null;
 				boolean success = false;
 
-				switch (request.getType()) {
-				case GETNODES:
-					// this message should be sent by the end-user
-					nodes = getNodes();
-					out.println(gson.toJson(nodes)); break;
-				case GETNODESWITHFILE:
-					// this message should be sent by the end-user
-					if (request.getNamespace() != null && request.getFilename() != null) {
-						nodes = getStorageNodesWithFile(request.getNamespace(), request.getFilename());
-						out.println(gson.toJson(nodes));
-					} break;
-				case NEW:
-					// this message should be sent by a storage node, notifying a new file has been stored in the node
-					if (request.getNamespace() != null && request.getFilename() != null && request.getNodeId() != null) {
-						success = newFile(request.getNamespace(), request.getFilename(), request.getNodeId());
+				if (nodeRequest != null) {
+					NodeInfo node = nodeRequest.getNode();
+					
+					switch (nodeRequest.getType()) {
+					case ONLINE: // online heartbeat
+						storageNodes.put(node.getId(), node);
+						break;
+					case OFFLINE: // offline heartbeat
+						storageNodes.remove(node.getId());
+						break;
+					default:
+						System.out.println("[DSSMaster] Invalid Node request: " + nodeRequest.getType());
 					}
-					out.println(gson.toJson(success)); break;
-				case DELETE:
-					// this message should be sent by a storage node, notifying a file has been deleted in the node
-					if (request.getNamespace() != null && request.getFilename() != null && request.getNodeId() != null) {
-						success = deleteFile(request.getNamespace(), request.getFilename(), request.getNodeId());
+					out.println(gson.toJson(success));	
+				}
+
+				else if (dssRequest != null) {
+					switch (dssRequest.getType()) {
+					case GETNODES:	// get a list of nodes
+						nodes = getNodes(0);
+						out.println(gson.toJson(nodes)); 
+						break;
+					case GETNODESWITHFILE: // get a list of nodes storing a specific file
+						if (dssRequest.getNamespace() != null && dssRequest.getFilename() != null) {
+							nodes = getStorageNodesWithFile(dssRequest.getNamespace(), dssRequest.getFilename());
+							out.println(gson.toJson(nodes));
+						} 
+						break;
+					case NEW: // notification on a new file stored on a specific node
+						if (dssRequest.getNamespace() != null && dssRequest.getFilename() != null && dssRequest.getNodeId() != null) {
+							success = newFile(dssRequest.getNamespace(), dssRequest.getFilename(), dssRequest.getNodeId());
+						}
+						out.println(gson.toJson(success)); 
+						break;
+					case DELETE: // notification on a file has been deleted on a specific node
+						if (dssRequest.getNamespace() != null && dssRequest.getFilename() != null && dssRequest.getNodeId() != null) {
+							success = deleteFile(dssRequest.getNamespace(), dssRequest.getFilename(), dssRequest.getNodeId());
+						}
+						out.println(gson.toJson(success)); 
+						break;
+					default:
+						System.out.println("[DSSMaster] Invalid DSS request: " + dssRequest.getType());
+						out.println(gson.toJson(success));
 					}
-					out.println(gson.toJson(success)); break;
-				default:
-					System.out.println("[DSSMaster] Invalid request: " + request.getType());
+				}
+
+				else {
 					out.println(gson.toJson(success));
 				}
 				out.flush();
@@ -190,12 +210,12 @@ public class NebulaDSSMaster {
 	 * Get a list of storage nodes for data uploading.
 	 * @return
 	 */
-	private static HashMap<String, NodeInfo> getNodes() {
+	private static HashMap<String, NodeInfo> getNodes(int option) {
 		return storageNodes;
 	}
 
 	/**
-	 * Get a list of storage nodes that contain a specific file.
+	 * Get a list of storage nodes containing a specific file.
 	 * 
 	 * @param namespace	The namespace
 	 * @param filename	The filename
