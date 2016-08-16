@@ -48,7 +48,7 @@ public abstract class Node {
 
 					PrintWriter out = new PrintWriter(conn.getOutputStream());
 					if (id == null) {
-						parseNodeRequest();
+						getNodeInformation();
 						System.out.println("[NODE] id: " + id + " lat: " + latitude + " lon: " + longitude);
 					}
 					out.write("id=" + id + "&requestType=ONLINE&nodeType=" + type + "&latitude=" + latitude + "&longitude=" + longitude);
@@ -80,9 +80,9 @@ public abstract class Node {
 		}
 		
 		/**
-		 * Get node information (id, ip, latitude, longitude)
+		 * Get a node information (id, ip, latitude, longitude)
 		 */
-		private void parseNodeRequest() {
+		private void getNodeInformation() {
 			// Get the location of the ip address
 			try {
 				// get the node's ip address
