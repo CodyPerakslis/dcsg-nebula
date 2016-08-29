@@ -136,8 +136,8 @@ public class TestApp {
 						System.out.println(jsonReply);
 						reply = gson.fromJson(jsonReply, ComputeRequest.class);
 						System.out.println("[APP] Latency: " + (System.currentTimeMillis() - reply.getTimestamp()) + " ms.");
-						if (reply.getNodeIp() != null && !reply.getNodeIp().isEmpty()) {
-							newIp = request.getNodeIp();
+						if (reply.getIp() != null && !reply.getIp().isEmpty()) {
+							newIp = request.getIp();
 						}
 					} catch (IOException e) {
 						e.printStackTrace();

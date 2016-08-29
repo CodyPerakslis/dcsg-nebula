@@ -15,7 +15,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import edu.umn.cs.Nebula.model.Lease;
-import edu.umn.cs.Nebula.node.NodeInfo;
+import edu.umn.cs.Nebula.model.NodeInfo;
 import edu.umn.cs.Nebula.request.NodeRequest;
 import edu.umn.cs.Nebula.request.NodeRequestType;
 import edu.umn.cs.Nebula.request.SchedulerRequest;

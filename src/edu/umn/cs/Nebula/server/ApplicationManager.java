@@ -32,7 +32,7 @@ public class ApplicationManager {
 	private static String password = "kvm";
 	private static String serverName = "localhost";
 	private static String dbName = "nebula";
-	private static int dbPort = 3307; // set to 3306 in hemant
+	private static int dbPort = 3306; // set to 3306 in hemant, 3307 in local
 	private static DatabaseConnector dbConn;
 
 	private static Schedule schedule;

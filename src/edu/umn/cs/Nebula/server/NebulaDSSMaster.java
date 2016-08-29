@@ -13,7 +13,7 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.Nebula.node.NodeInfo;
+import edu.umn.cs.Nebula.model.NodeInfo;
 import edu.umn.cs.Nebula.request.DSSRequest;
 import edu.umn.cs.Nebula.request.NodeRequest;
 import redis.clients.jedis.Jedis;

@@ -1,6 +1,6 @@
 package edu.umn.cs.Nebula.request;
 
-import edu.umn.cs.Nebula.node.NodeInfo;
+import edu.umn.cs.Nebula.model.NodeInfo;
 
 public class NodeRequest {
 	private NodeInfo node;

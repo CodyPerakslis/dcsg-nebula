@@ -1,8 +1,12 @@
 package edu.umn.cs.Nebula.node;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -12,6 +16,7 @@ import java.util.concurrent.Executors;
 import com.google.gson.Gson;
 
 import edu.umn.cs.Nebula.model.JobType;
+import edu.umn.cs.Nebula.model.NodeType;
 import edu.umn.cs.Nebula.request.ComputeRequest;
 import edu.umn.cs.Nebula.request.ComputeRequestType;
 
@@ -19,7 +24,7 @@ public class ComputeNode extends Node {
 	private static final int max_failure = 5;
 	private static final int interval = 2000; // in milliseconds
 	private static final int poolSize = 10;
-	private static final int requestPort = 2020;
+	private static final int requestPort = 6425;
 	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
 
 	private static Gson gson = new Gson();
@@ -46,9 +51,7 @@ public class ComputeNode extends Node {
 		connect(nebulaUrl, NodeType.COMPUTE);
 		if (!isReady()) return;
 
-		while (true) {
-			runServerTask();
-		}
+		runServerTask();
 	}
 
 	/**
@@ -61,8 +64,7 @@ public class ComputeNode extends Node {
 		try {
 			serverSock = new ServerSocket(requestPort);
 			System.out.println("[COMPUTE] Listening for client requests on port " + requestPort);
-			while (true) {
-				// listen for client requests
+			while (true) { // listen for client requests
 				requestPool.submit(new RequestHandler(serverSock.accept()));
 			}
 		} catch (IOException e) {
@@ -76,53 +78,72 @@ public class ComputeNode extends Node {
 	 */
 	public static class RequestHandler implements Runnable {
 		private final Socket clientSock;
-		private static final int timeout = 10000;
-		private long latency = -1;
+		private final int bufferSize = 1572864;
 
 		private RequestHandler(Socket sock) {
 			clientSock = sock;
 		}
 
-		private String handleMobileRequest(ComputeRequest request) {
-			String result = "";
-			ComputeRequestType requestType = request.getRequestType();
-
-			if (requestType.equals(ComputeRequestType.PING)) {
-				System.out.println("[COMPUTE] PING from " + request.getMyIp() + " (" + latency + " ms)");
-				ComputeRequest reply = new ComputeRequest(request.getNodeIp(), JobType.MOBILE, ComputeRequestType.PING);
-				reply.setNodeIp(request.getNodeIp());
-				reply.setTimestamp(System.currentTimeMillis());
-				return gson.toJson(reply);
-			}
-			
-			return result;
-		}
-
 		@Override
 		public void run() {
 			BufferedReader in = null;
-			PrintWriter out = null;
-			String reply = "";
+			OutputStream out = null;
+			PrintWriter pw = null;
 
-			try {		
+			try {
 				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
-				out = new PrintWriter(clientSock.getOutputStream());
-				clientSock.setSoTimeout(timeout);
+				out = clientSock.getOutputStream();
+				pw = new PrintWriter(out);
 
-				ComputeRequest request;
-				request = gson.fromJson(in.readLine(), ComputeRequest.class);
-				latency = System.currentTimeMillis() - request.getTimestamp();
-
-				reply = handleMobileRequest(request);
-				out.println(reply);
-				out.flush();
+				ComputeRequest request = gson.fromJson(in.readLine(), ComputeRequest.class);
+				System.out.println("[COMPUTE] Received a " + request.getRequestType() + " request from " + clientSock.getInetAddress().toString());
+				
+				switch(request.getRequestType()) {
+				case PING:
+					ComputeRequest reply = new ComputeRequest(ip, JobType.MOBILE, ComputeRequestType.PING);
+					pw.println(gson.toJson(reply));
+					pw.flush();
+					break;
+				case GETFILE:
+					if (request.getContents() == null || request.getContents().size() == 0) {
+						pw.println("Invalid file!");
+						pw.flush();
+						break;
+					}
+					File file = new File("/home/nebula/Nebula/" + request.getContents().get(0));
+					if (!file.exists()) {
+						pw.println("Invalid file!");
+						pw.flush();
+						break;
+					}
+					
+					byte[] buffer = new byte[bufferSize];
+					System.out.println("[COMPUTE] Sending file: /home/nebula/Nebula/" + file.getName());
+					InputStream fis = new FileInputStream(file);
+			        int count;
+			        long time = System.currentTimeMillis();
+			        while ((count = fis.read(buffer)) > 0) {
+			            out.write(buffer, 0, count);
+			            out.flush();
+			        }
+			        time = System.currentTimeMillis() - time;
+			        if (bandwidth < 0)
+			        	bandwidth = 1.0 * file.length() / time;
+			        else 
+			        	bandwidth = (bandwidth + (1.0 * file.length() / time)) / 2;
+					break;
+				default:
+					pw.println("Invalid request!");
+					pw.flush();
+					break;
+				}
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
 				try {
 					in.close();
 					out.close();
-					clientSock.close();
+					pw.close();
 				} catch (IOException e) {
 					e.printStackTrace();
 				}

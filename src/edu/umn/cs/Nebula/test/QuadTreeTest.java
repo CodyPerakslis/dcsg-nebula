@@ -4,9 +4,9 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
+import edu.umn.cs.Nebula.model.NodeInfo;
+import edu.umn.cs.Nebula.model.NodeType;
 import edu.umn.cs.Nebula.model.QuadTree;
-import edu.umn.cs.Nebula.node.NodeInfo;
-import edu.umn.cs.Nebula.node.NodeType;
 
 public class QuadTreeTest {
 	private NodeInfo root = new NodeInfo("root", "127.0.0.1", 0, 0, NodeType.COMPUTE);

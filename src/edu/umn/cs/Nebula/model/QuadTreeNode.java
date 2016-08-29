@@ -3,8 +3,6 @@ package edu.umn.cs.Nebula.model;
 import java.util.ArrayList;
 import java.util.HashSet;
 
-import edu.umn.cs.Nebula.node.NodeInfo;
-
 public class QuadTreeNode extends NodeInfo {
 
 	private static final long serialVersionUID = 1L;

@@ -7,18 +7,20 @@ import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import edu.umn.cs.Nebula.model.NodeType;
+
 public abstract class Node {
-	
+
 	public static String id = null;
 	public static String ip = null;
-	public static Double latitude = Double.MIN_VALUE;
-	public static Double longitude = Double.MIN_VALUE;
-	private static final Gson gson = new Gson();
-	
+	public static double latitude = Double.MIN_VALUE;
+	public static double longitude = Double.MIN_VALUE;
+	public static double bandwidth = -1.0;
+	public static double latency = -1.0;
+
 	public static void connect(String url, NodeType type) {
 		Thread pingThread = new Thread(new PingThread(url, type));
 		pingThread.start();
@@ -28,16 +30,16 @@ public abstract class Node {
 		private final String server;
 		private final NodeType type;
 		private final int pingInterval = 2000; // in milliseconds
-		
+
 		private PingThread(String url, NodeType type) {
 			this.server = url;
 			this.type = type;
 		}
-		
+
 		@Override
 		public void run() {
 			BufferedReader in = null;
-			
+
 			while (true) {
 				try {
 					URL url = new URL(server);
@@ -49,18 +51,24 @@ public abstract class Node {
 					PrintWriter out = new PrintWriter(conn.getOutputStream());
 					if (id == null) {
 						getNodeInformation();
-						System.out.println("[NODE] id: " + id + " lat: " + latitude + " lon: " + longitude);
 					}
-					out.write("id=" + id + "&requestType=ONLINE&nodeType=" + type + "&latitude=" + latitude + "&longitude=" + longitude);
+					if (bandwidth <= 0) {
+						out.write("id=" + id + "&ip=" + ip + "&requestType=ONLINE&nodeType=" + type + 
+								"&latitude=" + latitude + "&longitude=" + longitude);
+					} else {
+						out.write("id=" + id  + "&ip=" + ip + "&requestType=ONLINE&nodeType=" + type + 
+								"&latitude=" + latitude + "&longitude=" + longitude + "&bandwidth=" + bandwidth);
+					}
 					out.flush();
 					conn.connect();
-					
+
 					if (conn.getResponseCode() == 200) {
 						in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-						NodeInfo info = gson.fromJson(in.readLine(), NodeInfo.class);
-						if (id == null || ip == null) {
-							id = info.getId();
-							ip = info.getIp();
+						String response = in.readLine();
+						if (response.equalsIgnoreCase("OK")) {
+							//System.out.println("[NODE] id: " + id + " lat: " + latitude + " lon: " + longitude);
+						} else {
+							System.out.println("[NODE] " + response);
 						}
 						in.close();
 					} else {
@@ -78,12 +86,15 @@ public abstract class Node {
 				}
 			}
 		}
-		
+
 		/**
 		 * Get a node information (id, ip, latitude, longitude)
 		 */
 		private void getNodeInformation() {
 			// Get the location of the ip address
+			String line = null;
+			String data = "";
+			
 			try {
 				// get the node's ip address
 				URL ipLookupURL;
@@ -93,29 +104,26 @@ public abstract class Node {
 				ipLookupConn.connect();
 
 				BufferedReader br = new BufferedReader(new InputStreamReader(ipLookupConn.getInputStream()));
-				String line = null;
-				String data = "";
 				while((line = br.readLine()) != null) {
 					data += line;
 				}
-				
-				JsonParser parser = new JsonParser();
-				JsonObject jsonData = parser.parse(data).getAsJsonObject();
-				if (jsonData.get("loc") == null) {
-					// location not found
-					System.out.println("Location not found: " + jsonData);
-				} else {
-					String[] coordinate = jsonData.get("loc").toString().replace("\"", "").split(",");
-					ip = jsonData.get("ip").toString();
-					latitude = Double.parseDouble(coordinate[0]);
-					longitude = Double.parseDouble(coordinate[1]);
-				}
-				// create a new node object
-				ip = ip.substring(1, ip.length()-1);
-				id = ip;
 			} catch(IOException e) {
 				System.out.println("[NODE] Failed connecting to ip look up service: " + e);
 			}
+			JsonParser parser = new JsonParser();
+			JsonObject jsonData = parser.parse(data).getAsJsonObject();
+			if (jsonData.get("loc") == null) {
+				// location not found
+				System.out.println("Location not found: " + jsonData);
+			} else {
+				String[] coordinate = jsonData.get("loc").toString().replace("\"", "").split(",");
+				ip = jsonData.get("ip").toString();
+				latitude = Double.parseDouble(coordinate[0]);
+				longitude = Double.parseDouble(coordinate[1]);
+			}
+			// create a new node object
+			ip = ip.substring(1, ip.length()-1);
+			id = ip;
 		}
 	}
 }

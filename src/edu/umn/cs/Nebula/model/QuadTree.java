@@ -2,8 +2,6 @@ package edu.umn.cs.Nebula.model;
 
 import java.util.ArrayList;
 
-import edu.umn.cs.Nebula.node.NodeInfo;
-
 public class QuadTree {
 	private QuadTreeNode root;
 	private double splitThreshold;

@@ -6,6 +6,8 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
@@ -13,13 +15,14 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.Nebula.node.NodeInfo;
-import edu.umn.cs.Nebula.node.NodeType;
+import edu.umn.cs.Nebula.model.DatabaseConnector;
+import edu.umn.cs.Nebula.model.NodeInfo;
+import edu.umn.cs.Nebula.model.NodeType;
 import edu.umn.cs.Nebula.request.NodeRequest;
 
 public class NebulaMonitor {
 	private static final long maxInactive = 5000; 	// in milliseconds
-	private static final int updateInterval = 2000; // in milliseconds
+	private static final int updateInterval = 4000; // in milliseconds
 	private static final int port = 6422;
 	private static final int poolSize = 30;
 
@@ -30,7 +33,35 @@ public class NebulaMonitor {
 	private static final Object computeNodesLock = new Object();
 	private static final Object storageNodesLock = new Object();
 
+	// database configuration
+	private static String username = "nebula";
+	private static String password = "kvm";
+	private static String serverName = "localhost";
+	private static String dbName = "nebula";
+	private static int dbPort = 3306; // set to 3306 in hemant, 3307 in local
+	private static DatabaseConnector dbConn;
+
 	public static void main(String args[]) {
+		if (args.length < 5) {
+			System.out.println("[MONITOR] Using default DB configuration");
+		} else {
+			username = args[0];
+			password = args[1];
+			serverName = args[2];
+			dbName = args[3];
+			dbPort = Integer.parseInt(args[4]);
+		}
+
+		// Setup the database connection
+		System.out.print("[MONITOR] Connecting to the database ...");	
+		dbConn = new DatabaseConnector(username, password, serverName, dbName, dbPort);
+		if (!dbConn.connect()) {
+			System.out.println("[FAILED]");
+			return;
+		} else {
+			System.out.println("[OK]");
+		}
+
 		Thread nodeMonitorThread = new Thread(new NodeMonitorThread());
 		nodeMonitorThread.start();
 
@@ -70,6 +101,8 @@ public class NebulaMonitor {
 			long now;
 			NodeInfo nodeInfo = null;
 			HashSet<String> removedNodes = new HashSet<String>();
+			NodeInfo node = null;
+			String sqlStatement;
 
 			while (true) {
 				now = System.currentTimeMillis();
@@ -83,8 +116,16 @@ public class NebulaMonitor {
 						}
 					}
 					for (String nodeId: removedNodes) {
-						computeNodes.remove(nodeId);
+						node = computeNodes.remove(nodeId);
+						sqlStatement = "UPDATE node SET bandwidth = " + node.getBandwidth()
+							+ ", online = " + node.getLastOnline()
+							+ ", latitude = " + node.getLatitude()
+							+ ", longitude = " + node.getLongitude()
+							+ " WHERE id = '" + node.getId() + "'"
+							+ " AND type = '" + node.getNodeType() + "';";
+						dbConn.updateQuery(sqlStatement);
 					}
+					System.out.println("\n[MONITOR] Compute Nodes: " + computeNodes.keySet());
 				}
 				removedNodes.clear();
 
@@ -97,11 +138,18 @@ public class NebulaMonitor {
 						}
 					}
 					for (String nodeId: removedNodes) {
-						storageNodes.remove(nodeId);
+						node = storageNodes.remove(nodeId);
+						sqlStatement = "UPDATE node SET bandwidth = " + node.getBandwidth()
+							+ ", online = " + node.getLastOnline()
+							+ ", latitude = " + node.getLatitude()
+							+ ", longitude = " + node.getLongitude()
+							+ " WHERE id = '" + node.getId() + "'"
+							+ " AND type = '" + node.getNodeType() + "';";
+						dbConn.updateQuery(sqlStatement);
 					}
+					System.out.println("[MONITOR] Storage Nodes: " + storageNodes.keySet());
 				}
 				removedNodes.clear();
-
 				try {
 					Thread.sleep(updateInterval);
 				} catch (InterruptedException e) {
@@ -170,7 +218,7 @@ public class NebulaMonitor {
 					if (out != null) out.close();
 					if (clientSock != null) clientSock.close();
 				} catch (IOException e) {
-					System.out.println("Failed to close streams or socket: " + e);
+					System.out.println("[MONITOR] Failed to close streams or socket: " + e);
 				}
 			}
 		}
@@ -184,6 +232,8 @@ public class NebulaMonitor {
 		private boolean handleHeartbeat(NodeRequest request) {
 			NodeInfo node = request.getNode();
 			boolean success = false;
+			String sqlStatement;
+			ResultSet queryResult;
 
 			if (node == null || node.getNodeType() == null) {
 				System.out.println("[MONITOR] No/invalid node information is found.");
@@ -197,7 +247,28 @@ public class NebulaMonitor {
 					synchronized (computeNodesLock) {
 						if (computeNodes.containsKey(node.getId())) {
 							computeNodes.get(node.getId()).updateLastOnline();
+							if (node.getBandwidth() > 0) {
+								computeNodes.get(node.getId()).addBandwidth(node.getBandwidth());
+							}
 						} else {
+							sqlStatement = "SELECT bandwidth, latency FROM node"
+									+ " WHERE id = '" + node.getId() + "' "
+									+ " AND type = '" + node.getNodeType() + "';";
+							queryResult = dbConn.selectQuery(sqlStatement);
+							try {
+								if (queryResult != null && queryResult.next()) {
+									node.addBandwidth(queryResult.getDouble("bandwidth"));
+									node.addLatency(queryResult.getDouble("latency"));
+								} else {
+									sqlStatement = "INSERT INTO node (id, ip, latitude, longitude, bandwidth, latency, type, online)"
+											+ " VALUES ('" + node.getId() + "', '" + node.getIp() + "', '" + node.getLatitude()
+											+ "', '" + node.getLongitude() + "', " + node.getBandwidth() + ", " + node.getLatency()
+											+ ", '" + node.getNodeType() + "', '" + System.currentTimeMillis() + "');";
+									dbConn.updateQuery(sqlStatement);
+								}
+							} catch (SQLException e) {
+								e.printStackTrace();
+							}
 							computeNodes.put(node.getId(), node);
 						}
 					}
@@ -206,7 +277,28 @@ public class NebulaMonitor {
 					synchronized (storageNodesLock) {
 						if (storageNodes.containsKey(node.getId())) {
 							storageNodes.get(node.getId()).updateLastOnline();
+							if (node.getBandwidth() > 0) {
+								storageNodes.get(node.getId()).addBandwidth(node.getBandwidth());
+							}
 						} else {
+							sqlStatement = "SELECT bandwidth, latency FROM node"
+									+ " WHERE id = '" + node.getId() + "' "
+									+ " AND type = '" + node.getNodeType() + "';";
+							queryResult = dbConn.selectQuery(sqlStatement);
+							try {
+								if (queryResult != null && queryResult.next()) {
+									node.addBandwidth(queryResult.getDouble("bandwidth"));
+									node.addLatency(queryResult.getDouble("latency"));
+								} else {
+									sqlStatement = "INSERT INTO node (id, ip, latitude, longitude, bandwidth, latency, type, online)"
+											+ " VALUES ('" + node.getId() + "', '" + node.getIp() + "', '" + node.getLatitude()
+											+ "', '" + node.getLongitude() + "', " + node.getBandwidth() + ", " + node.getLatency()
+											+ ", '" + node.getNodeType() + "', '" + System.currentTimeMillis() + "');";
+									dbConn.updateQuery(sqlStatement);
+								}
+							} catch (SQLException e) {
+								e.printStackTrace();
+							}
 							storageNodes.put(node.getId(), node);
 						}
 					}
@@ -214,22 +306,33 @@ public class NebulaMonitor {
 				}
 				break;
 			case OFFLINE:
+				NodeInfo savedNode = null;
 				// a request indicating that the node is going to be offline/inactive
 				if (node.getNodeType().equals(NodeType.COMPUTE)) {
 					synchronized (computeNodesLock) {
-						computeNodes.remove(node.getId());
+						savedNode = computeNodes.remove(node.getId());
 					}
 					success = true;
 				} else if (node.getNodeType().equals(NodeType.STORAGE)) {
 					synchronized (storageNodesLock) {
-						storageNodes.remove(node.getId());
+						savedNode = storageNodes.remove(node.getId());
 					}
 					success = true;
+				}
+				if (savedNode != null) {
+					sqlStatement = "UPDATE node SET bandwidth = " + savedNode.getBandwidth()
+						+ ", online = " + System.currentTimeMillis()
+						+ ", latitude = " + node.getLatitude()
+						+ ", longitude = " + node.getLongitude()
+						+ " WHERE id = '" + savedNode.getId() + "'"
+						+ " AND type = '" + node.getNodeType() + "';";
+					dbConn.updateQuery(sqlStatement);
 				}
 				break;
 			default:
 				System.out.println("[MONITOR] Invalid node type: " + request.getType());
 			}
+
 			return success;
 		}
 	}
