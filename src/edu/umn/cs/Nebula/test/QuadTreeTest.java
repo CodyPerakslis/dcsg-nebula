@@ -67,7 +67,7 @@ public class QuadTreeTest {
 		
 		assertTrue(tree.availableNodes.size() == 0);
 		assertTrue(tree.getRoot().getNW().getId().equals("NW"));
-		assertTrue(tree.getRoot().coveredItems.size() == 2);
+		assertTrue(tree.getRoot().clients.size() == 2);
 		assertTrue(tree.getRoot().getScore() == 2);
 		assertTrue(tree.getRoot().getNW().getScore() == 2);
 	}
@@ -93,15 +93,15 @@ public class QuadTreeTest {
 		
 		assertTrue(tree.availableNodes.size() == 0);
 		assertTrue(tree.getRoot().getNW().getId().equals("NW"));
-		assertTrue(tree.getRoot().coveredItems.size() == 2);
+		assertTrue(tree.getRoot().clients.size() == 2);
 		assertTrue(tree.getRoot().getScore() == 2);
 		assertTrue(tree.getRoot().getNW().getScore() == 2);
 		
 		NodeInfo node5 = new NodeInfo("child5", "127.0.0.1", 10, -10, NodeType.COMPUTE);
 		tree.insertItem(node5);
-		assertTrue(tree.getRoot().coveredItems.size() == 2);
+		assertTrue(tree.getRoot().clients.size() == 2);
 		assertTrue(tree.getRoot().getScore() == 2);
-		assertTrue(tree.getRoot().getNW().coveredItems.size() == 3);
+		assertTrue(tree.getRoot().getNW().clients.size() == 3);
 		assertTrue(tree.getRoot().getNW().getScore() == 3);
 	}
 	
@@ -126,15 +126,15 @@ public class QuadTreeTest {
 		
 		assertTrue(tree.availableNodes.size() == 0);
 		assertTrue(tree.getRoot().getNW().getId().equals("NW"));
-		assertTrue(tree.getRoot().coveredItems.size() == 2);
+		assertTrue(tree.getRoot().clients.size() == 2);
 		assertTrue(tree.getRoot().getScore() == 2);
 		assertTrue(tree.getRoot().getNW().getScore() == 2);
 		
 		NodeInfo node5 = new NodeInfo("child5", "127.0.0.1", -20, -10, NodeType.COMPUTE);
 		tree.insertItem(node5);
-		assertTrue(tree.getRoot().coveredItems.size() == 3);
+		assertTrue(tree.getRoot().clients.size() == 3);
 		assertTrue(tree.getRoot().getScore() == 3);
-		assertTrue(tree.getRoot().getNW().coveredItems.size() == 2);
+		assertTrue(tree.getRoot().getNW().clients.size() == 2);
 		assertTrue(tree.getRoot().getNW().getScore() == 2);
 	}
 	
@@ -159,7 +159,7 @@ public class QuadTreeTest {
 		
 		assertTrue(tree.availableNodes.size() == 0);
 		assertTrue(tree.getRoot().getNE().getId().equals("NE"));
-		assertTrue(tree.getRoot().coveredItems.size() == 3);
+		assertTrue(tree.getRoot().clients.size() == 3);
 		assertTrue(tree.getRoot().getScore() == 3);
 		assertTrue(tree.getRoot().getNE().getScore() == 1);
 	}
@@ -185,10 +185,10 @@ public class QuadTreeTest {
 		
 		assertTrue(tree.availableNodes.size() == 0);
 		assertTrue(tree.getRoot().getSW().getId().equals("SW"));
-		assertTrue(tree.getRoot().coveredItems.size() == 3);
+		assertTrue(tree.getRoot().clients.size() == 3);
 		assertTrue(tree.getRoot().getScore() == 3);
 		assertTrue(tree.getRoot().getSW().getScore() == 1);
-		assertTrue(tree.getRoot().getSW().coveredItems.get(0).getId().equals("child1"));
+		assertTrue(tree.getRoot().getSW().clients.get(0).getId().equals("child1"));
 	}
 	
 	@Test
@@ -212,10 +212,10 @@ public class QuadTreeTest {
 		
 		assertTrue(tree.availableNodes.size() == 0);
 		assertTrue(tree.getRoot().getSE().getId().equals("SE"));
-		assertTrue(tree.getRoot().coveredItems.size() == 3);
+		assertTrue(tree.getRoot().clients.size() == 3);
 		assertTrue(tree.getRoot().getScore() == 3);
 		assertTrue(tree.getRoot().getSE().getScore() == 1);
-		assertTrue(tree.getRoot().getSE().coveredItems.get(0).getId().equals("child3"));
+		assertTrue(tree.getRoot().getSE().clients.get(0).getId().equals("child3"));
 	}
 	
 	

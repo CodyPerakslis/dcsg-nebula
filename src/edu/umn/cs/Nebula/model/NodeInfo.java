@@ -8,8 +8,7 @@ public class NodeInfo implements Serializable {
 	private int maxRecord = 10;
 	private String id;
 	private String ip;
-	private double latitude;
-	private double longitude;
+	private Coordinate coordinate;
 	private LinkedList<Double> bandwidth;
 	private LinkedList<Double> latency;
 	private NodeType nodeType;
@@ -19,8 +18,7 @@ public class NodeInfo implements Serializable {
 	public NodeInfo(String id, String ip, double latitude, double longitude, NodeType nodeType) {
 		this.id = id;
 		this.ip = ip;
-		this.latitude = latitude;
-		this.longitude = longitude;
+		coordinate = new Coordinate(latitude, longitude);
 		this.nodeType = nodeType;
 		this.lastOnline = System.currentTimeMillis();
 		this.bandwidth = new LinkedList<Double>();
@@ -30,8 +28,7 @@ public class NodeInfo implements Serializable {
 	public NodeInfo(String id, String ip, double latitude, double longitude, NodeType nodeType, double bw, double lt) {
 		this.id = id;
 		this.ip = ip;
-		this.latitude = latitude;
-		this.longitude = longitude;
+		coordinate = new Coordinate(latitude, longitude);
 		this.nodeType = nodeType;
 		this.lastOnline = System.currentTimeMillis();
 		this.bandwidth = new LinkedList<Double>();
@@ -70,19 +67,23 @@ public class NodeInfo implements Serializable {
 	}
 	
 	public void setLatitude(double latitude) {
-		this.latitude = latitude;
+		coordinate.setLatitude(latitude);
 	}
 	
 	public double getLatitude() {
-		return latitude;
+		return coordinate.getLatitude();
 	}
 	
 	public void setLongitude(double longitude) {
-		this.longitude = longitude;
+		coordinate.setLongitude(longitude);
 	}
 	
 	public double getLongitude() {
-		return longitude;
+		return coordinate.getLongitude();
+	}
+	
+	public Coordinate getCoordinate() {
+		return coordinate;
 	}
 	
 	public void addBandwidth(double bandwidth) {

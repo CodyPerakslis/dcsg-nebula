@@ -10,14 +10,14 @@ import java.net.URL;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import edu.umn.cs.Nebula.model.Coordinate;
 import edu.umn.cs.Nebula.model.NodeType;
 
 public abstract class Node {
 
 	public static String id = null;
 	public static String ip = null;
-	public static double latitude = Double.MIN_VALUE;
-	public static double longitude = Double.MIN_VALUE;
+	public static Coordinate coordinate = new Coordinate(Double.MIN_VALUE, Double.MIN_VALUE);
 	public static double bandwidth = -1.0;
 	public static double latency = -1.0;
 
@@ -52,12 +52,13 @@ public abstract class Node {
 					if (id == null) {
 						getNodeInformation();
 					}
+
 					if (bandwidth <= 0) {
 						out.write("id=" + id + "&ip=" + ip + "&requestType=ONLINE&nodeType=" + type + 
-								"&latitude=" + latitude + "&longitude=" + longitude);
+								"&latitude=" + coordinate.getLatitude() + "&longitude=" + coordinate.getLongitude());
 					} else {
 						out.write("id=" + id  + "&ip=" + ip + "&requestType=ONLINE&nodeType=" + type + 
-								"&latitude=" + latitude + "&longitude=" + longitude + "&bandwidth=" + bandwidth);
+								"&latitude=" + coordinate.getLatitude() + "&longitude=" + coordinate.getLongitude() + "&bandwidth=" + bandwidth);
 					}
 					out.flush();
 					conn.connect();
@@ -116,10 +117,10 @@ public abstract class Node {
 				// location not found
 				System.out.println("Location not found: " + jsonData);
 			} else {
-				String[] coordinate = jsonData.get("loc").toString().replace("\"", "").split(",");
+				String[] returnedCoordinate = jsonData.get("loc").toString().replace("\"", "").split(",");
 				ip = jsonData.get("ip").toString();
-				latitude = Double.parseDouble(coordinate[0]);
-				longitude = Double.parseDouble(coordinate[1]);
+				coordinate.setLatitude(Double.parseDouble(returnedCoordinate[0]));
+				coordinate.setLongitude(Double.parseDouble(returnedCoordinate[1]));
 			}
 			// create a new node object
 			ip = ip.substring(1, ip.length()-1);
