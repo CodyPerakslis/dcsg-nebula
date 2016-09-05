@@ -211,7 +211,7 @@ public class NebulaMonitor {
 				}
 				out.flush();
 			} catch (IOException e) {
-				System.err.println("Error: " + e);
+				System.err.println("[MONITOR] Error: " + e);
 			} finally {
 				try {
 					if (in != null) in.close();
