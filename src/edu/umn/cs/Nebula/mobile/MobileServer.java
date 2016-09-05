@@ -117,10 +117,10 @@ public class MobileServer {
 						for (String nodeId: nodes.keySet()) {
 							if (!temp.containsKey(nodeId)) {
 								removedNodes.add(nodeId);
-								index.removeItem(nodeId, temp.get(nodeId).getLatitude(), temp.get(nodeId).getLongitude());
 							}
 						}
 						for (String nodeId: removedNodes) {
+							index.removeItem(nodeId, nodes.get(nodeId).getLatitude(), nodes.get(nodeId).getLongitude());
 							nodes.remove(nodeId);
 						}
 					}
