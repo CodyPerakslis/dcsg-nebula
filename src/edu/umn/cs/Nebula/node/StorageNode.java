@@ -29,7 +29,7 @@ public class StorageNode extends Node {
 	private static final int requestPort = 2021;
 	private static final int fileTransferPort = 2022;
 	private static final int maxTrial = 5;
-	private static final String fileDirectory = "~/nebula/DSS";
+	private static final String fileDirectory = "~/Nebula/DSS";
 	private static final int bufferSize = 1024 * 64;
 	private static final int timeout = 5000;
 

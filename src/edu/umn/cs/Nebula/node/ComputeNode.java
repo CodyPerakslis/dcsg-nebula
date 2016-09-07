@@ -1,10 +1,7 @@
 package edu.umn.cs.Nebula.node;
 
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
@@ -78,7 +75,6 @@ public class ComputeNode extends Node {
 	 */
 	public static class RequestHandler implements Runnable {
 		private final Socket clientSock;
-		private final int bufferSize = 1572864;
 
 		private RequestHandler(Socket sock) {
 			clientSock = sock;
@@ -103,34 +99,6 @@ public class ComputeNode extends Node {
 					ComputeRequest reply = new ComputeRequest(ip, JobType.MOBILE, ComputeRequestType.PING);
 					pw.println(gson.toJson(reply));
 					pw.flush();
-					break;
-				case GETFILE:
-					if (request.getContents() == null || request.getContents().size() == 0) {
-						pw.println("Invalid file!");
-						pw.flush();
-						break;
-					}
-					File file = new File("/home/umn_nebula/Nebula/" + request.getContents().get(0));
-					if (!file.exists()) {
-						pw.println("Invalid file!");
-						pw.flush();
-						break;
-					}
-					
-					byte[] buffer = new byte[bufferSize];
-					System.out.println("[COMPUTE] Sending file: /home/nebula/Nebula/" + file.getName());
-					InputStream fis = new FileInputStream(file);
-			        int count;
-			        long time = System.currentTimeMillis();
-			        while ((count = fis.read(buffer)) > 0) {
-			            out.write(buffer, 0, count);
-			            out.flush();
-			        }
-			        time = System.currentTimeMillis() - time;
-			        if (bandwidth < 0)
-			        	bandwidth = 1.0 * file.length() / time;
-			        else 
-			        	bandwidth = (bandwidth + (1.0 * file.length() / time)) / 2;
 					break;
 				default:
 					pw.println("Invalid request!");

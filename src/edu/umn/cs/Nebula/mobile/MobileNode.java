@@ -3,6 +3,7 @@ package edu.umn.cs.Nebula.mobile;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -26,21 +27,21 @@ import edu.umn.cs.Nebula.request.ComputeRequest;
 import edu.umn.cs.Nebula.request.ComputeRequestType;
 
 public class MobileNode extends Node {
-	private static final int interval = 2000; // in milliseconds
 	private static final int poolSize = 10;
 	private static final int requestPort = 6425;
 	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
 	private static final String mobileServerUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/MobileHandler";
+	private static final String fileDirectory = "/home/nebula/Nebula/Mobile/";
 	private static final Gson gson = new Gson();
 
 	private static ArrayList<String> neighbors = new ArrayList<String>();
 
 	/**
-	 * Make sure that the node is ready to run, i.e., it has its own id.
-	 * 
+	 * Make sure that the node is ready to run, i.e., it has a valid id.
 	 * @throws InterruptedException
 	 */
 	private static boolean isReady() throws InterruptedException {
+		final int interval = 2000; // in milliseconds
 		final int maxFailure = 5;
 		int counter = 0;
 
@@ -56,6 +57,12 @@ public class MobileNode extends Node {
 		return true;
 	}
 
+	/**
+	 * A thread class that periodically send a heartbeat to the Mobile Server.
+	 * The response should contain a list of neighboring nodes.
+	 *  
+	 * @author albert
+	 */
 	private static class MobileServerThread implements Runnable {
 		private final int interval = 10000; // in milliseconds
 		private final String server;
@@ -68,7 +75,7 @@ public class MobileNode extends Node {
 		public void run() {
 			BufferedReader in = null;
 			String uri = server + "?requestType=LOCAL&id=" + id + "&ip=" + ip + "&latitude=" + coordinate.getLatitude()
-					+ "&longitude=" + coordinate.getLongitude();
+			+ "&longitude=" + coordinate.getLongitude();
 			String response;
 			ArrayList<String> temp;
 
@@ -84,12 +91,10 @@ public class MobileNode extends Node {
 					if (conn.getResponseCode() == 200) {
 						in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
 						response = in.readLine();
-						temp = gson.fromJson(response, new TypeToken<ArrayList<String>>() {
-						}.getType());
+						temp = gson.fromJson(response, new TypeToken<ArrayList<String>>() {}.getType());
 						if (temp != null) {
 							neighbors = temp;
-							neighbors.remove(ip); // remove itself from the
-													// local node list
+							neighbors.remove(ip); // remove itself from the list
 							System.out.println("[M-" + id + "] Neighbors: " + neighbors);
 						}
 						in.close();
@@ -114,13 +119,16 @@ public class MobileNode extends Node {
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
 
+		// Connect to Nebula Central
 		connect(nebulaUrl, NodeType.COMPUTE);
-		if (!isReady())
-			return;
+		if (!isReady()) return;
+
+		// Connect to Mobile Server
 		Thread mobileThread = new Thread(new MobileServerThread(mobileServerUrl));
 		mobileThread.start();
 
 		try {
+			// Getting ready to accept connection
 			serverSock = new ServerSocket(requestPort);
 			System.out.println("[M-" + id + "] Listening for client requests on port " + requestPort);
 			while (true) { // listen for client requests
@@ -133,83 +141,198 @@ public class MobileNode extends Node {
 	}
 
 	/**
-	 * This thread is invoked when the node receives a request. Handle the
-	 * request depending on the type of the task.
+	 * This thread is invoked when the node receives a request. 
+	 * Handle the request depending on the type of the task.
+	 * 
+	 * @author albert
 	 */
 	public static class RequestHandler implements Runnable {
 		private final Socket clientSock;
-		private final int bufferSize = 1572864;
+		private final int bufferSize = 1024 * 1024;
+		private ComputeRequest request;
+		private ComputeRequest reply;
 
 		private RequestHandler(Socket sock) {
 			clientSock = sock;
 		}
 
+		/**
+		 * Download a file from the client's socket.
+		 * 
+		 * @param path
+		 * @param size
+		 * @return
+		 */
+		private boolean downloadFile(String filename, int size) {
+			InputStream in = null;
+			FileOutputStream out = null;
+			byte[] buffer = new byte[bufferSize];
+			int bytesRead;
+			boolean success = false;
+			String path;
+
+			if (filename == null || filename.isEmpty() || size < 0)
+				return false;
+
+			path = fileDirectory + filename;
+			File file = new File(path);
+			try {
+				if (!file.exists()) file.createNewFile();
+				out = new FileOutputStream(file, false);
+				in = clientSock.getInputStream();
+			} catch (IOException e) {
+				System.out.println("[M-" + id + "] Failed downloading file (" + path + "): " + e.getMessage());
+				return false;
+			}
+
+			// Notify the client that we're ready to download the file
+			PrintWriter pw = new PrintWriter(out);
+			pw.println(filename);
+
+			// Read data from the stream and write it to the file
+			System.out.println("[M-" + id + "] Downloading file <" + path + ", " + size + ">");
+			int totalRead = 0;
+			try {
+				while (totalRead < size && (bytesRead = in.read(buffer)) > 0) {
+					totalRead += bytesRead;
+					out.write(buffer, 0, bytesRead);
+				}
+				out.flush();
+				success = true;
+			} catch (IOException e) {
+				System.out.println("[M-" + id + "] Failed reading/writing file: " + e.getMessage());
+			}
+
+			try {
+				if (in != null) in.close();
+				if (out != null) out.close();
+			} catch (IOException e) {
+				System.out.println("[M-" + id + "] Failed closing stream: " + e.getMessage());
+			}
+			return success;
+		}
+
+		/**
+		 * Send a file to the client's socket.
+		 * 
+		 * @param filename
+		 * @return
+		 */
+		private boolean sendFile(String filename) {
+			FileInputStream in;
+			OutputStream out;
+			byte[] buffer = new byte[bufferSize];
+			int bytesWritten;
+			boolean success = false;
+			String path;
+
+			if (filename == null || filename.isEmpty())
+				return false;
+
+			path = fileDirectory + filename;
+			File file = new File(path);
+			try {
+				in = new FileInputStream(file);
+				out = clientSock.getOutputStream();
+			} catch (IOException e) {
+				System.out.println("[M-" + id + "] Failed sending file (" + path + "): " + e.getMessage());
+				return false;
+			}
+
+			// Send the file
+			System.out.println("[M-" + id + "] Sending file <" + path + ", " + file.length() + ">");
+			int totalWritten = 0;
+			try {
+				while ((bytesWritten = in.read(buffer)) > 0) {
+					totalWritten += bytesWritten;
+					out.write(buffer, 0, totalWritten);
+					out.flush();
+				}
+				success = true;
+			} catch (IOException e) {
+				System.out.println("[M-" + id + "] Failed reading/writing file: " + e.getMessage());
+			}
+			
+			try {
+				if (in != null) in.close();
+				if (out != null) out.close();
+			} catch (IOException e) {
+				System.out.println("[M-" + id + "] Failed closing stream: " + e.getMessage());
+			}
+			return success;
+		}
+
 		@Override
 		public void run() {
-			BufferedReader in = null;
-			OutputStream out = null;
+			BufferedReader br = null;
 			PrintWriter pw = null;
 
 			try {
-				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
-				out = clientSock.getOutputStream();
-				pw = new PrintWriter(out);
-
-				ComputeRequest request = gson.fromJson(in.readLine(), ComputeRequest.class);
-				System.out.println("[M-" + id + "] Received a " + request.getRequestType() + " request from "
-						+ clientSock.getInetAddress().toString());
-
-				switch (request.getRequestType()) {
-				case PING:
-					ComputeRequest reply = new ComputeRequest(ip, JobType.MOBILE, ComputeRequestType.PING);
-					reply.addContent(neighbors.toString());
-					pw.println(gson.toJson(reply));
-					pw.flush();
-					break;
-				case GETFILE:
-					if (request.getContents() == null || request.getContents().size() == 0) {
-						pw.println("Invalid file!");
-						pw.flush();
-						break;
-					}
-					File file = new File("/home/umn_nebula/Nebula/" + request.getContents().get(0));
-					if (!file.exists()) {
-						pw.println("Invalid file!");
-						pw.flush();
-						break;
-					}
-
-					byte[] buffer = new byte[bufferSize];
-					System.out.println("[M-" + id + "] Sending file: /home/nebula/Nebula/" + file.getName());
-					InputStream fis = new FileInputStream(file);
-					int count;
-					long time = System.currentTimeMillis();
-					while ((count = fis.read(buffer)) > 0) {
-						out.write(buffer, 0, count);
-						out.flush();
-					}
-					time = System.currentTimeMillis() - time;
-					if (bandwidth < 0)
-						bandwidth = 1.0 * file.length() / time;
-					else
-						bandwidth = (bandwidth + (1.0 * file.length() / time)) / 2;
-					break;
-				default:
-					pw.println("Invalid request!");
-					pw.flush();
-					break;
-				}
+				br = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
+				pw = new PrintWriter(clientSock.getOutputStream());
 			} catch (IOException e) {
-				e.printStackTrace();
-			} finally {
+				System.out.println("[M-" + id + "] Failed opening streams from client's socket: " + e.getMessage());
+				return;
+			}
+
+			try {
+				request = gson.fromJson(br.readLine(), ComputeRequest.class);
+			} catch (IOException e) {
+				System.out.println("[M-" + id + "] Failed parsing request: " + e.getMessage());
 				try {
-					in.close();
-					out.close();
+					br.close();
 					pw.close();
-				} catch (IOException e) {
+				} catch (IOException e1) {
 					e.printStackTrace();
 				}
+			}
+			System.out.println("[M-" + id + "] Received a " + request.getRequestType() + " request");
 
+			switch (request.getRequestType()) {
+			case PING:
+				reply = new ComputeRequest(ip, JobType.MOBILE, ComputeRequestType.PING);
+				// include a list of nearby nodes to the reply message
+				for (String peer: neighbors) {
+					reply.addContent(peer);
+				}
+				pw.println(gson.toJson(reply));
+				break;
+			case UPLOAD:
+				if (request.getContents() == null || request.getContents().size() == 0) {
+					pw.println("Failed");
+				} else {
+					String filename = request.getContents().get(0);
+					int filesize = Integer.parseInt(request.getContents().get(1));
+					if (downloadFile(filename, filesize)) {
+						System.out.println("[M-" + id + "] File download: COMPLETE");
+					} else {
+						System.out.println("[M-" + id + "] File download: FAILED");
+					}
+				}
+				break;
+			case DOWNLOAD:
+				if (request.getContents() == null || request.getContents().size() == 0) {
+					pw.println("Failed");
+				} else {
+					String filename = request.getContents().get(0);
+					if (sendFile(filename)) {
+						System.out.println("[M-" + id + "] File upload: COMPLETE");
+					} else {
+						System.out.println("[M-" + id + "] File upload: FAILED");
+					}
+				}	
+				break;
+			default:
+				pw.println("Invalid request");
+				break;
+			}
+			pw.flush();
+
+			try {
+				br.close();
+				pw.close();
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
 		}
 	}
