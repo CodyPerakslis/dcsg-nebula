@@ -9,6 +9,7 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -30,13 +31,14 @@ public class MobileServer {
 	private static int port = 6429;
 
 	private static HashMap<String, NodeInfo> nodes;
+	private static HashSet<String> activeNodes;
 	private static Grid index;
 
 	private static final Object nodesLock = new Object();
 
-
 	public static void main(String[] args) throws InterruptedException {
-		nodes = new HashMap<String, NodeInfo>();		
+		nodes = new HashMap<String, NodeInfo>();	
+		activeNodes = new HashSet<String>();
 		index = new Grid(24, 25, 49, -125, -65);
 
 		int counter = 0;
@@ -94,7 +96,7 @@ public class MobileServer {
 			HashMap<String, NodeInfo> temp = new HashMap<String, NodeInfo>();
 			PrintWriter out = null;
 			BufferedReader in = null;
-			Socket socket;
+			Socket socket = null;
 			NodeRequest nodeRequest = new NodeRequest(NodeRequestType.COMPUTE);
 			HashSet<String> removedNodes = new HashSet<String>();
 
@@ -107,43 +109,55 @@ public class MobileServer {
 					out.flush();
 					in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 					temp = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, NodeInfo>>(){}.getType());
-
-					synchronized (nodesLock) {
-						for (String nodeId: temp.keySet()) {
-							nodes.put(nodeId, temp.get(nodeId));
-							index.insertItem(nodeId, temp.get(nodeId).getLatitude(), temp.get(nodeId).getLongitude());
-						}
-						// remove nodes that become inactive
-						for (String nodeId: nodes.keySet()) {
-							if (!temp.containsKey(nodeId)) {
-								removedNodes.add(nodeId);
-							}
-						}
-						for (String nodeId: removedNodes) {
-							index.removeItem(nodeId, nodes.get(nodeId).getLatitude(), nodes.get(nodeId).getLongitude());
-							nodes.remove(nodeId);
-						}
+				} catch (IOException e) {
+					System.out.println("[MOBILE] Failed connecting to the Nebula Monitor: " + e.getMessage());
+					try {
+						Thread.sleep(interval);
+					} catch (InterruptedException e1) {
+						System.out.println("[MOBILE] Nebula Thread exits: " + e1.getMessage());
+						return;
 					}
-					removedNodes.clear();
+				}
+				
+				try {
 					out.close();
 					in.close();
-					socket.close();
-					
-					if (isFirst) {
-						success = true;
-						isFirst = false;
-						System.out.println("[MOBILE] Connected to Nebula Server.");
-					} else {
-						System.out.println("\n[MOBILE] Compute nodes: " + nodes.keySet());
-					}
+					if (socket != null) socket.close();
 				} catch (IOException e) {
-					System.out.println("[MOBILE] Failed connecting to the Nebula Monitor: " + e);
+					System.out.println("[MOBILE] Failed closing streams: " + e.getMessage());
+				}
+
+				synchronized (nodesLock) {
+					for (String nodeId: temp.keySet()) {
+						nodes.put(nodeId, temp.get(nodeId));
+						index.insertItem(nodeId, temp.get(nodeId).getLatitude(), temp.get(nodeId).getLongitude());
+					}
+					// remove nodes that become inactive
+					for (String nodeId: nodes.keySet()) {
+						if (!temp.containsKey(nodeId)) {
+							removedNodes.add(nodeId);
+						}
+					}
+					for (String nodeId: removedNodes) {
+						index.removeItem(nodeId, nodes.get(nodeId).getLatitude(), nodes.get(nodeId).getLongitude());
+						nodes.remove(nodeId);
+						activeNodes.remove(nodeId);
+					}
+				}
+				removedNodes.clear();
+				
+				if (isFirst) {
+					success = true;
+					isFirst = false;
+					System.out.println("[MOBILE] Connected to Nebula Server.");
+				} else {
+					System.out.println("\n[MOBILE] Available nodes: " + nodes.keySet());
 				}
 
 				try {
 					Thread.sleep(interval);
 				} catch (InterruptedException e) {
-					System.out.println("[MOBILE] Nebula Thread exits.");
+					System.out.println("[MOBILE] Nebula Thread exits: " + e.getMessage());
 					return;
 				}
 			}
@@ -166,48 +180,54 @@ public class MobileServer {
 		public void run() {
 			BufferedReader in = null;
 			PrintWriter out = null;
-			ArrayList<String> temp = new ArrayList<String>();
+			ArrayList<String> result = new ArrayList<String>();
+			String input;
+			MobileRequest request = null;
+			double latitude, longitude;
 
 			try {
 				in = new BufferedReader(new InputStreamReader (clientSock.getInputStream()));
 				out = new PrintWriter(clientSock.getOutputStream(), true);
 
 				// read the input message and parse it as a node request
-				String input = in.readLine();
-				MobileRequest request = gson.fromJson(input, MobileRequest.class);
-				double latitude, longitude;
-
-				if (request != null) {
-					// TODO handle client's request
-					switch (request.getType()) {
-					case LOCAL:
-						latitude = request.getNode().getLatitude();
-						longitude = request.getNode().getLongitude();
-						if (request.getNode() != null)
-							temp.addAll(index.getItems(index.getGridLocation(latitude, longitude)));
-						break;
-					case ALL:
-						temp.addAll(nodes.keySet());
-						break;
-					default:
-						System.out.println("[MOBILE] Undefined request type: " + request.getType());
-					}
-					out.println(gson.toJson(temp));
-				} else {
-					System.out.println("[MOBILE] Request not found or invalid.");
-					out.println(gson.toJson(temp));
-				}
-				out.flush();
+				input = in.readLine();
+				request = gson.fromJson(input, MobileRequest.class);
 			} catch (IOException e) {
 				System.err.println("[MOBILE] Error: " + e);
-			} finally {
-				try {
-					if (in != null) in.close();
-					if (out != null) out.close();
-					if (clientSock != null) clientSock.close();
-				} catch (IOException e) {
-					System.err.println("[MOBILE] Failed to close streams or socket: " + e);
+			}
+
+			if (request != null) {
+				// TODO handle client's request
+				switch (request.getType()) {
+				case LOCAL:
+					if (request.getNode() != null) {
+						latitude = request.getNode().getLatitude();
+						longitude = request.getNode().getLongitude();
+						LinkedList<String> temp = index.getItems(index.getGridLocation(latitude, longitude));
+						for (String node: temp) {
+							if (activeNodes.contains(node))
+								result.add(node);
+						}
+					}
+					break;
+				case ALL:
+					result.addAll(activeNodes);
+					break;
+				default:
+					System.out.println("[MOBILE] Undefined request type: " + request.getType());
 				}
+			} else {
+				System.out.println("[MOBILE] Request not found or invalid.");
+			}
+			out.println(gson.toJson(result));
+			out.flush();
+
+			try {
+				if (in != null) in.close();
+				if (out != null) out.close();
+				if (clientSock != null) clientSock.close();
+			} catch (IOException e) {
+				System.err.println("[MOBILE] Failed to close streams or socket: " + e);
 			}
 		}
 	}

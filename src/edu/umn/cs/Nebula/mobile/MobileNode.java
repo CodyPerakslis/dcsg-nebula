@@ -185,16 +185,13 @@ public class MobileNode extends Node {
 				return false;
 			}
 
-			// Notify the client that we're ready to download the file
-			PrintWriter pw = new PrintWriter(out);
-			pw.println(filename);
-
 			// Read data from the stream and write it to the file
 			System.out.println("[M-" + id + "] Downloading file <" + path + ", " + size + ">");
 			int totalRead = 0;
 			try {
 				while (totalRead < size && (bytesRead = in.read(buffer)) > 0) {
 					totalRead += bytesRead;
+					// System.out.println("[M-" + id + "] Download: " + totalRead + "/" + size);
 					out.write(buffer, 0, bytesRead);
 				}
 				out.flush();
@@ -279,13 +276,17 @@ public class MobileNode extends Node {
 				request = gson.fromJson(br.readLine(), ComputeRequest.class);
 			} catch (IOException e) {
 				System.out.println("[M-" + id + "] Failed parsing request: " + e.getMessage());
+				pw.println("Failed");
+				pw.flush();
 				try {
 					br.close();
 					pw.close();
 				} catch (IOException e1) {
 					e.printStackTrace();
 				}
+				return;
 			}
+
 			System.out.println("[M-" + id + "] Received a " + request.getRequestType() + " request");
 
 			switch (request.getRequestType()) {
@@ -304,9 +305,11 @@ public class MobileNode extends Node {
 					String filename = request.getContents().get(0);
 					int filesize = Integer.parseInt(request.getContents().get(1));
 					if (downloadFile(filename, filesize)) {
-						System.out.println("[M-" + id + "] File download: COMPLETE");
+						System.out.println("[M-" + id + "] File upload: COMPLETE");
+						pw.println("Complete");
 					} else {
-						System.out.println("[M-" + id + "] File download: FAILED");
+						System.out.println("[M-" + id + "] File upload: FAILED");
+						pw.println("Failed");
 					}
 				}
 				break;
@@ -316,9 +319,11 @@ public class MobileNode extends Node {
 				} else {
 					String filename = request.getContents().get(0);
 					if (sendFile(filename)) {
-						System.out.println("[M-" + id + "] File upload: COMPLETE");
+						System.out.println("[M-" + id + "] File download: COMPLETE");
+						pw.println("Complete");
 					} else {
-						System.out.println("[M-" + id + "] File upload: FAILED");
+						System.out.println("[M-" + id + "] File download: FAILED");
+						pw.println("Failed");
 					}
 				}	
 				break;

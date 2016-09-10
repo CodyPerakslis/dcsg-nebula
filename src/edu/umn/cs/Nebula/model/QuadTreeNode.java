@@ -14,22 +14,11 @@ public class QuadTreeNode extends NodeInfo {
 	private double score;
 
 	// specialized attributes
-	public ArrayList<NodeInfo> clients;
+	private ArrayList<NodeInfo> clients;
 	public double topLatitude;
 	public double bottomLatitude;
 	public double leftLongitude;
 	public double rightLongitude;
-
-	public QuadTreeNode(double initScore, NodeInfo node) {
-		super(node.getId(), node.getIp(), node.getLatitude(), node.getLongitude(), node.getNodeType());
-		parent = NW = NE = SW = SE = null;
-		score = initScore;
-		clients = new ArrayList<NodeInfo>();
-		topLatitude = 90;
-		bottomLatitude = -90;
-		leftLongitude = -180;
-		rightLongitude = 180;
-	}
 
 	public QuadTreeNode(double initScore, NodeInfo node, double topLatitude, double bottomLatitude, double leftLongitude, double rightLongitude) {
 		super(node.getId(), node.getIp(), node.getLatitude(), node.getLongitude(), node.getNodeType());
@@ -56,18 +45,17 @@ public class QuadTreeNode extends NodeInfo {
 	 * @param nW
 	 * @return the new value of the current node
 	 */
-	public double setNW(QuadTreeNode nW, double maxScore) {
+	public double setNW(QuadTreeNode nW) {
 		HashSet<NodeInfo> temp = new HashSet<NodeInfo>();
-		if (nW == null) return Double.MIN_VALUE;
 		
 		NW = nW; 
+		if (NW == null)
+			return Double.MIN_VALUE;
+		
 		for (NodeInfo client: clients) {
 			if (client.getLatitude() >= NW.bottomLatitude && client.getLongitude() < NW.rightLongitude) {
 				NW.insertClient(client);
 				temp.add(client);
-				if (score > maxScore) {
-					break;
-				}
 			}
 		}
 		for (NodeInfo client: temp) {
@@ -83,18 +71,17 @@ public class QuadTreeNode extends NodeInfo {
 	 * @param nE
 	 * @return the new value of the current node
 	 */
-	public double setNE(QuadTreeNode nE, double maxScore) {
+	public double setNE(QuadTreeNode nE) {
 		HashSet<NodeInfo> temp = new HashSet<NodeInfo>();
-		if (nE == null) return Double.MIN_VALUE;
 		
 		NE = nE; 
+		if (NE == null)
+			return Double.MIN_VALUE;
+		
 		for (NodeInfo client: clients) {
 			if (client.getLatitude() >= NE.bottomLatitude && client.getLongitude() >= NE.leftLongitude) {
 				NE.insertClient(client);
 				temp.add(client);
-				if (score > maxScore) {
-					break;
-				}
 			}
 		}
 		for (NodeInfo client: temp) {
@@ -110,18 +97,17 @@ public class QuadTreeNode extends NodeInfo {
 	 * @param sW
 	 * @return the new value of the current node
 	 */
-	public double setSW(QuadTreeNode sW, double maxScore) { 
+	public double setSW(QuadTreeNode sW) { 
 		HashSet<NodeInfo> temp = new HashSet<NodeInfo>();
-		if (sW == null) return Double.MIN_VALUE;
 		
 		SW = sW; 
+		if (SW == null)
+			return Double.MIN_VALUE;
+		
 		for (NodeInfo client: clients) {
 			if (client.getLatitude() < SW.topLatitude && client.getLongitude() < SW.rightLongitude) {
 				SW.insertClient(client);
 				temp.add(client);
-				if (score > maxScore) {
-					break;
-				}
 			}
 		}
 		for (NodeInfo client: temp) {
@@ -137,18 +123,17 @@ public class QuadTreeNode extends NodeInfo {
 	 * @param sE
 	 * @return the new value of the current node
 	 */
-	public double setSE(QuadTreeNode sE, double maxScore) {
+	public double setSE(QuadTreeNode sE) {
 		HashSet<NodeInfo> temp = new HashSet<NodeInfo>();
-		if (sE == null) return Double.MIN_VALUE;
-		
+
 		SE = sE; 
+		if (SE == null)
+			return Double.MIN_VALUE;
+		
 		for (NodeInfo client: clients) {
 			if (client.getLatitude() < SE.topLatitude && client.getLongitude() >= SE.leftLongitude) {
 				SE.insertClient(client);
 				temp.add(client);
-				if (score > maxScore) {
-					break;
-				}
 			}
 		}
 		for (NodeInfo client: temp) {
@@ -160,6 +145,10 @@ public class QuadTreeNode extends NodeInfo {
 	public double getScore() { return score; }
 	public void setScore(double score) { this.score = score; }
 
+	public ArrayList<NodeInfo> getClients() {
+		return clients;
+	}
+	
 	/**
 	 * Insert a client into the node and update the score
 	 * 
@@ -167,7 +156,6 @@ public class QuadTreeNode extends NodeInfo {
 	 * @return the updated score after insertion
 	 */
 	public boolean insertClient(NodeInfo client) { 
-		score = getInsertNewScore(client);
 		return clients.add(client); 
 	}
 	
@@ -178,7 +166,6 @@ public class QuadTreeNode extends NodeInfo {
 	 * @return the updated score after removal
 	 */
 	public boolean removeClient(NodeInfo client) {
-		score = getRemoveNewScore(client);
 		return clients.remove(client); 
 	}
 	
@@ -222,21 +209,11 @@ public class QuadTreeNode extends NodeInfo {
 			else return NE; 												// North East Quadrant		
 		}
 	}
-
-	/**
-	 * TODO implement the score updating function for adding an item into the tree
-	 * @return the updated score after insertion
-	 */
-	public double getInsertNewScore(NodeInfo item) {
-		return score + 1;
-	}
-
-	/**
-	 * TODO implement the score updating function for removing an item from the tree
-	 * @return the updated score after removal
-	 */
-	public double getRemoveNewScore(NodeInfo item) {
-		return score - 1;
+	
+	public boolean isLeaf() {
+		if (NW == null && NE == null && SW == null && SE == null)
+			return true;
+		return false;
 	}
 	
 	/**

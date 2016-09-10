@@ -6,7 +6,6 @@ import java.util.LinkedList;
 public class Grid {
 	private final int k;
 	private final double minLatitude, maxLatitude, minLongitude, maxLongitude;
-	private final double cellWidth, cellHeight;
 	
 	private HashMap<String, GridCell> cells;
 	
@@ -16,9 +15,6 @@ public class Grid {
 		this.maxLatitude = maxLatitude;
 		this.minLongitude = minLongitude;
 		this.maxLongitude = maxLongitude;
-		
-		cellWidth = (maxLongitude - minLongitude) / k;
-		cellHeight = (maxLatitude - minLatitude) / k;
 		
 		cells = new HashMap<String, GridCell>();
 		String id;
@@ -31,9 +27,8 @@ public class Grid {
 	}
 	
 	public boolean validCoordinate(double latitude, double longitude) {
-		if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)
-			return false;
-		if (latitude < minLatitude || latitude > maxLatitude || longitude < minLongitude || longitude > maxLongitude)
+		if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || 
+				latitude < minLatitude || latitude > maxLatitude || longitude < minLongitude || longitude > maxLongitude)
 			return false;
 		return true;
 	}
@@ -59,6 +54,9 @@ public class Grid {
 		} else {
 			relativeLon = longitude - minLongitude;
 		}
+		
+		double cellWidth = (maxLongitude - minLongitude) / k;
+		double cellHeight = (maxLatitude - minLatitude) / k;
 		
 		int latitudeLocation = (int) Math.floor(relativeLat / cellHeight);
 		int longitudeLocation = (int) Math.floor(relativeLon / cellWidth);
