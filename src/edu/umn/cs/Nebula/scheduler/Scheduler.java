@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.server;
+package edu.umn.cs.Nebula.scheduler;
 
 import java.io.BufferedReader;
 import java.io.IOException;
