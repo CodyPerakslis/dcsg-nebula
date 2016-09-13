@@ -7,43 +7,327 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
-import java.util.Set;
+import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 
 import edu.umn.cs.Nebula.model.Lease;
 import edu.umn.cs.Nebula.model.NodeInfo;
+import edu.umn.cs.Nebula.model.NodeType;
 import edu.umn.cs.Nebula.request.NodeRequest;
-import edu.umn.cs.Nebula.request.NodeRequestType;
 import edu.umn.cs.Nebula.request.SchedulerRequest;
 
 /**
- * Nebula Resource Manager which uses a leasing mechanism.
+ * Nebula Resource Manager.
  * 
  * @author albert
  *
  */
-public class ResourceManager {	
-	private static final int schedulerPort = 6424;
-	private static final int poolSize = 10;
+public class ResourceManager {
+	private static final long maxInactive = 5000; 	// in milliseconds
+	private static final int updateInterval = 4000; // in milliseconds
+	private static final int nodesPort = 6424;
+	private static final int schedulerPort = 6426;
+	private static final int poolSize = 20;
+	private static final Object nodesLock = new Object();
 	private static final Gson gson = new Gson();
 
 	private static HashMap<String, NodeInfo> nodes = new HashMap<String, NodeInfo>();
 	private static HashMap<String, Lease> busyNodes = new HashMap<String, Lease>();
-	private static final Object nodesLock = new Object();
+
+
+	public static void main(String[] args) {
+		// Run a server thread that handles requests from schedulers
+		Thread schedulerThread = new Thread(new SchedulerServerThread());
+		schedulerThread.start();
+
+		// Run a server thread that handles requests from nodes
+		Thread nodesThread = new Thread(new NodesServerThread());
+		nodesThread.start();
+		
+		long now;
+		NodeInfo nodeInfo = null;
+		HashSet<String> removedNodes = new HashSet<String>();
+		while (true) {
+			now = System.currentTimeMillis();
+
+			synchronized (nodesLock) {
+				for (String nodeId: nodes.keySet()) {
+					nodeInfo = nodes.get(nodeId);
+					// find inactive compute nodes
+					if (now - nodeInfo.getLastOnline() > maxInactive) {
+						removedNodes.add(nodeId);
+					}
+				}
+				for (String nodeId: removedNodes) {
+					nodes.remove(nodeId);
+				}
+			}
+			System.out.println("[RM] Compute Nodes: " + nodes.keySet());
+			removedNodes.clear();
+
+			try {
+				Thread.sleep(updateInterval);
+			} catch (InterruptedException e) {
+				System.out.println("[RM] Main thread interrupted. Thread exits.");
+				schedulerThread.interrupt();
+				nodesThread.interrupt();
+				return;
+			}
+		}
+	}
+
+	private static class NodesServerThread implements Runnable {
+		@Override
+		public void run() {
+			// Listening for client requests
+			ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
+			ServerSocket serverSock = null;
+			try {
+				serverSock = new ServerSocket(nodesPort);
+				System.out.println("[RM] Listening for nodes requests on port " + nodesPort);
+				while (true) {
+					requestPool.submit(new NodesHandler(serverSock.accept()));
+				}
+			} catch (IOException e) {
+				System.err.println("[RM] Failed to establish listening socket: " + e);
+			} finally {
+				requestPool.shutdown();
+				if (serverSock != null) {
+					try {
+						serverSock.close();
+					} catch (IOException e) {
+						System.err.println("[RM] Failed to close listening socket");
+					}
+				}
+			}
+		}
+	}
+
+	private static class NodesHandler implements Runnable {
+		private final Socket clientSock;
+
+		public NodesHandler(Socket sock) {
+			clientSock = sock;
+		}
+
+		@Override
+		public void run() {
+			BufferedReader in = null;
+			PrintWriter out = null;
+			NodeRequest nodeRequest;
+
+			try {
+				in = new BufferedReader(new InputStreamReader (clientSock.getInputStream()));
+				out = new PrintWriter(clientSock.getOutputStream(), true);
+
+				// read the input message and parse it as a node request
+				nodeRequest = gson.fromJson(in.readLine(), NodeRequest.class);
+			} catch (IOException e) {
+				System.out.println("[RM] Failed parsing node request: " + e.getMessage());
+				if (out != null) {
+					out.println(gson.toJson(false));
+					out.flush();
+					out.close();
+				}
+				return;
+			}
+
+			boolean success = false;
+			if (nodeRequest != null) {		
+				switch (nodeRequest.getType()) {
+				case ONLINE:
+				case OFFLINE:	// handle online/offline message from a node
+					success = handleHeartbeat(nodeRequest);
+					out.println(gson.toJson(success));
+					break;
+				case COMPUTE:	// handle get a list of compute nodes
+					HashMap<String, NodeInfo> result = new HashMap<String, NodeInfo>();
+					result.putAll(nodes);
+					out.println(gson.toJson(result));
+					break;
+				default:
+					System.out.println("[RM] Invalid node request type: " + nodeRequest.getType());
+					out.println(gson.toJson(success));
+				}
+			} else {
+				System.out.println("[RM] Request not found or invalid.");
+				out.println(gson.toJson(success));
+			}
+			out.flush();
+
+			try {
+				if (in != null) in.close();
+				if (out != null) out.close();
+				if (clientSock != null) clientSock.close();
+			} catch (IOException e) {
+				System.out.println("[RM] Failed to close streams or socket: " + e.getMessage());
+			}
+		}
+	}
+
+	private static class SchedulerServerThread implements Runnable {
+		@Override
+		public void run() {
+			// Listening for client requests
+			ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
+			ServerSocket serverSock = null;
+			try {
+				serverSock = new ServerSocket(schedulerPort);
+				System.out.println("[RM] Listening for scheduler requests on port " + schedulerPort);
+				while (true) {
+					requestPool.submit(new SchedulerHandler(serverSock.accept()));
+				}
+			} catch (IOException e) {
+				System.err.println("[RM] Failed to establish listening socket: " + e);
+			} finally {
+				requestPool.shutdown();
+				if (serverSock != null) {
+					try {
+						serverSock.close();
+					} catch (IOException e) {
+						System.err.println("[RM] Failed to close listening socket");
+					}
+				}
+			}
+		}
+	}
 
 	/**
-	 * Get a list of nodes that are not acquired by any scheduler.
+	 * Scheduler handler class which communicates with a scheduler for leasing and acquiring nodes.
 	 * 
-	 * @return	available nodes
+	 * @author albert
 	 */
-	public static Set<String> getAvailableNodeIds() {
-		Set<String> temp = nodes.keySet();
-		temp.removeAll(busyNodes.keySet());
-		return temp;
+	public static class SchedulerHandler implements Runnable {
+		private Socket socket;
+
+		SchedulerHandler(Socket socket) {
+			this.socket = socket;
+		}
+
+		public void run() {
+			PrintWriter out = null;
+			BufferedReader in = null;
+			SchedulerRequest request;
+
+			try {
+				out = new PrintWriter(socket.getOutputStream());
+				in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+				request = gson.fromJson(in.readLine(), SchedulerRequest.class);
+			} catch (IOException e) {
+				System.out.println("[RM] Failed parsing scheduler request: " + e.getMessage());
+				if (out != null) {
+					out.println(gson.toJson(false));
+					out.flush();
+					out.close();
+				}
+				return;
+			}
+
+			if (request == null) {
+				System.out.println("[RM] Scheduler request not found.");
+				out.println(gson.toJson(null));
+			} else {
+				System.out.println("[RM] Receive a " + request.getType() + " request from " + request.getSchedulerName());
+
+				switch(request.getType()) {
+				case GET:
+					// return the status of all nodes, including the ones that are busy
+					HashMap<String, NodeInfo> reply = new HashMap<String, NodeInfo>();
+					NodeInfo nodeInfo;
+					synchronized (nodesLock) {
+						for (String nodeId: nodes.keySet()) {
+							nodeInfo = nodes.get(nodeId);
+							// Add the remaining time to expire
+							if (busyNodes.containsKey(nodeId)) {
+								nodeInfo.setNote("" + busyNodes.get(nodeId).getRemainingTime());
+							} else {
+								nodeInfo.setNote("0");
+							}
+							reply.put(nodeId, nodeInfo);
+						}
+					}
+					out.println(gson.toJson(reply));
+					break;
+				case LEASE:
+					HashMap<String, Lease> successfullyLeasedNodes = handleLease(request);
+					System.out.println("[RM] Leased: " + successfullyLeasedNodes.keySet() + " by " + request.getSchedulerName());
+					out.println(gson.toJson(successfullyLeasedNodes));
+					break;
+				case RELEASE:
+					boolean releaseSuccess = handleRelease(request);
+					out.println(gson.toJson(releaseSuccess));
+					break;
+				default:
+					System.out.println("[RM] Invalid request: " + request.getType());
+					out.println(gson.toJson(false));
+				}
+			}
+			out.flush();
+
+			try {
+				if (in != null) in.close();
+				if (out != null) out.close();
+				socket.close();
+			} catch (IOException e) {
+				System.out.println("[RM] Failed closing streams/socket.");
+			}
+		}
+	}
+
+	/**
+	 * Handle an online/offline message from a node.
+	 * 
+	 * @param request
+	 * @return is success?
+	 */
+	private static boolean handleHeartbeat(NodeRequest request) {
+		NodeInfo node = null;
+		boolean success = false;
+
+		if (request != null)
+			node = request.getNode();
+		if (node == null || node.getNodeType() == null) {
+			System.out.println("[RM] Invalid node request");
+			return success;
+		}
+
+		switch (request.getType()) {
+		case ONLINE:
+			// a request indicating that the node is online/active
+			if (!node.getNodeType().equals(NodeType.COMPUTE)) {
+				return false;
+			}
+			synchronized (nodesLock) {
+				if (nodes.containsKey(node.getId())) {
+					nodes.get(node.getId()).updateLastOnline();
+					if (node.getBandwidth() > 0) {
+						nodes.get(node.getId()).addBandwidth(node.getBandwidth());
+					}
+				} else {
+					nodes.put(node.getId(), node);	
+				}
+			}
+			success = true;
+			break;
+		case OFFLINE:
+			// a request indicating that the node is going to be offline/inactive
+			if (!node.getNodeType().equals(NodeType.COMPUTE)) {
+				return false;
+			}
+			synchronized (nodesLock) {
+				nodes.remove(node.getId());
+			}
+			success = true;
+
+			break;
+		default:
+			System.out.println("[RM] Invalid request: " + request.getType());
+		}
+		return success;
 	}
 
 	/**
@@ -72,15 +356,14 @@ public class ResourceManager {
 						continue;
 					}
 				}
-				
+
 				// TODO add more conditions/constraints such as lease time limit etc.
-				
+
 				// Success. Create a new lease
 				busyNodes.put(nodeId, leaseRequest.getLease(nodeId));
 				successfullyLeasedNodes.put(nodeId, leaseRequest.getLease(nodeId));
 			}
 		}
-
 		return successfullyLeasedNodes;
 	}
 
@@ -104,162 +387,5 @@ public class ResourceManager {
 			}
 		}
 		return true;
-	}
-
-	public static void main(String[] args) {
-		System.out.print("[RM] Setting up resource manager ...");
-		Thread nodeMonitorThread = new Thread(new MonitorThread());
-		nodeMonitorThread.start();
-		System.out.println("[OK]");
-		
-		// Listening for client requests
-		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
-		ServerSocket serverSock = null;
-		try {
-			serverSock = new ServerSocket(schedulerPort);
-			System.out.println("[RM] Listening for scheduler requests on port " + schedulerPort);
-			while (true) {
-				requestPool.submit(new SchedulerHandler(serverSock.accept()));
-			}
-		} catch (IOException e) {
-			System.err.println("[RM] Failed to establish listening socket: " + e);
-		} finally {
-			requestPool.shutdown();
-			if (serverSock != null) {
-				try {
-					serverSock.close();
-				} catch (IOException e) {
-					System.err.println("[RM] Failed to close listening socket");
-				}
-			}
-		}
-	}
-
-	/**
-	 * This thread class will periodically update the list of online storage nodes
-	 * from Nebula Monitor.
-	 * @author albert
-	 *
-	 */
-	private static class MonitorThread implements Runnable {
-		private static final String monitorUrl = "localhost";
-		private static final int monitorPort = 6422;
-		private static final long updateInterval = 5000;
-		private static Socket socket;
-
-		@Override
-		public void run() {
-			while (true) {
-				BufferedReader in = null;
-				PrintWriter out = null;
-
-				try {
-					socket = new Socket(monitorUrl, monitorPort);
-
-					in = new BufferedReader(new InputStreamReader (socket.getInputStream()));
-					out = new PrintWriter(socket.getOutputStream(), true);
-
-					// Send GET compute nodes request to NebulaMonitor
-					NodeRequest request = new NodeRequest(null, NodeRequestType.COMPUTE);
-					out.println(gson.toJson(request));
-					out.flush();
-
-					// Parse the list of online storage nodes
-					HashMap<String, NodeInfo> onlineNodes = gson.fromJson(in.readLine(), 
-							new TypeToken<HashMap<String, NodeInfo>>(){}.getType());
-
-					if (onlineNodes != null) {
-						synchronized (nodesLock) {
-							nodes = onlineNodes;
-						}
-					}
-					in.close();
-					out.close();
-					socket.close();
-					Thread.sleep(updateInterval);
-				} catch (IOException e) {
-					System.out.println("[RM] Failed connecting to Nebula Monitor: " + e);
-					return;
-				} catch (InterruptedException e1) {
-					System.out.println("[RM] Sleep interrupted: " + e1);
-				}
-			}
-		}
-	}
-	
-	/**
-	 * Scheduler handler class which communicates with a scheduler for leasing and acquiring nodes.
-	 * 
-	 * @author albert
-	 */
-	public static class SchedulerHandler implements Runnable {
-		private Socket socket;
-
-		SchedulerHandler(Socket socket) {
-			this.socket = socket;
-		}
-
-		public void run() {
-			PrintWriter out = null;
-			BufferedReader in = null;
-
-			try {
-				out = new PrintWriter(socket.getOutputStream());
-				in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-				SchedulerRequest request = gson.fromJson(in.readLine(), SchedulerRequest.class);
-
-				if (request == null) {
-					System.out.println("[RM] Request not found.");
-					out.println(gson.toJson(null));
-				} else {
-					System.out.println("[RM] Receive a " + request.getType() + " request from " + request.getSchedulerName());
-					
-					switch(request.getType()) {
-					case GET:
-						// Return the status of all nodes, including the ones that are busy
-						HashMap<String, NodeInfo> activeNodes = new HashMap<String, NodeInfo>();
-
-						synchronized (nodesLock) {
-							for (String nodeId: nodes.keySet()) {
-								NodeInfo info = nodes.get(nodeId);
-								// Add the remaining time to expire
-								if (busyNodes.containsKey(nodeId)) {
-									info.setNote("" + busyNodes.get(nodeId).getRemainingTime());
-								} else {
-									info.setNote("0");
-								}
-								activeNodes.put(nodeId, info);
-							}
-						}
-						out.println(gson.toJson(activeNodes));
-						break;
-					case LEASE:
-						HashMap<String, Lease> successfullyLeasedNodes = handleLease(request);
-						System.out.println("[RM] Leased: " + successfullyLeasedNodes.keySet() + " by " + request.getSchedulerName());
-						out.println(gson.toJson(successfullyLeasedNodes));
-						break;
-					case RELEASE:
-						boolean releaseSuccess = handleRelease(request);
-						out.println(gson.toJson(releaseSuccess));
-						break;
-					default:
-						System.out.println("[RM] Invalid request: " + request.getType());
-						out.println(gson.toJson(false));
-					}
-				}
-				out.flush();
-			} catch (IOException e) {
-				System.out.println("[RM] Failed processing request from a scheduler: " + e);
-			} finally {
-				try {
-					if (in != null) in.close();
-					if (out != null) out.close();
-					socket.close();
-				} catch (IOException e) {
-					System.out.println("[RM] Failed closing stream/socket.");
-				}
-			}
-		}
 	}
 }
