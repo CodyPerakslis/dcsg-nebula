@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.mobile;
+package edu.umn.cs.Nebula.node;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -14,6 +14,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -22,7 +23,6 @@ import com.google.gson.reflect.TypeToken;
 
 import edu.umn.cs.Nebula.model.JobType;
 import edu.umn.cs.Nebula.model.NodeType;
-import edu.umn.cs.Nebula.node.Node;
 import edu.umn.cs.Nebula.request.ComputeRequest;
 import edu.umn.cs.Nebula.request.ComputeRequestType;
 
@@ -32,9 +32,11 @@ public class MobileNode extends Node {
 	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
 	private static final String mobileServerUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/MobileHandler";
 	private static final String fileDirectory = "/home/nebula/Nebula/Mobile/";
+	private static final String appDirectory = "/home/nebula/Nebula/Mobile/";
 	private static final Gson gson = new Gson();
 
 	private static ArrayList<String> neighbors = new ArrayList<String>();
+	private static HashMap<String, Process> runningApps;
 
 	/**
 	 * Make sure that the node is ready to run, i.e., it has a valid id.
@@ -78,6 +80,7 @@ public class MobileNode extends Node {
 			+ "&longitude=" + coordinate.getLongitude();
 			String response;
 			ArrayList<String> temp;
+			int childStatus;
 
 			while (true) {
 				try {
@@ -95,7 +98,6 @@ public class MobileNode extends Node {
 						if (temp != null) {
 							neighbors = temp;
 							neighbors.remove(ip); // remove itself from the list
-							System.out.println("[M-" + id + "] Neighbors: " + neighbors);
 						}
 						in.close();
 					} else {
@@ -106,6 +108,18 @@ public class MobileNode extends Node {
 					System.out.println("[M-" + id + "] Failed connecting to Nebula: " + e);
 					return;
 				}
+				System.out.println("[M-" + id + "] Neighbors: " + neighbors);
+				for (String appName: runningApps.keySet()) {
+					try {
+						childStatus = runningApps.get(appName).exitValue();
+						runningApps.remove(appName);
+						System.out.println("[M-" + id + "] " + appName + " exits with exit code " + childStatus);
+					} catch (IllegalThreadStateException e) {
+						// the process is still running
+					}
+				}
+				System.out.println("[M-" + id + "] Running Apps: " + runningApps.keySet());
+				
 				try {
 					Thread.sleep(interval);
 				} catch (InterruptedException e) {
@@ -118,6 +132,7 @@ public class MobileNode extends Node {
 	public static void main(String args[]) throws InterruptedException {
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
+		runningApps = new HashMap<String, Process>();
 
 		// Connect to Nebula Central
 		connect(nebulaUrl, NodeType.COMPUTE);
@@ -263,6 +278,12 @@ public class MobileNode extends Node {
 		public void run() {
 			BufferedReader br = null;
 			PrintWriter pw = null;
+			Process child;
+			String command;
+			String jobExe;
+			String params;
+			String appName;
+			String content;
 
 			try {
 				br = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
@@ -326,6 +347,109 @@ public class MobileNode extends Node {
 						pw.println("Failed");
 					}
 				}	
+				break;
+			case RUNAPP:
+				if (request.getContents() == null || request.getContents().size() < 3) {
+					System.out.println("[M-" + id + "] Invalid parameters to run app");
+					pw.println("Failed running application");
+					break;
+				}
+				appName = request.getContents().get(0);
+				command = request.getContents().get(1);
+				jobExe = request.getContents().get(2);
+				params = " ";
+				if (request.getContents().size() > 3) {
+					params += request.getContents().get(3);
+				}
+				try {
+					child = Runtime.getRuntime().exec(command + " " + appDirectory + jobExe + params);
+				} catch (IOException e) {
+					System.out.println("[M-" + id + "] Failed running application: " 
+							+ command + " " + appDirectory + jobExe + params + ": " + e.getMessage());
+					pw.println("Failed running application");
+					break;
+				}
+				runningApps.put(appName, child);
+				pw.println("OK");
+				break;
+			case STOPAPP:
+				if (request.getContents() == null || request.getContents().isEmpty()) {
+					System.out.println("[M-" + id + "] Invalid parameters to stop app");
+					pw.println("Failed stopping application");
+					break;
+				}
+				appName = request.getContents().get(0);
+				if ((child = runningApps.get(appName)) != null) {
+					child.destroy();
+					runningApps.remove(appName);
+					System.out.println("[M-" + id + "] " + appName + " process killed");
+					pw.println("OK");
+				} else {
+					System.out.println("[M-" + id + "] " + appName + " is not available / no such process");
+					pw.println("No such process available");
+				}
+				break;
+			case COMPUTE:
+				appName = request.getContents().get(0);
+				if (appName == null || request.getJobType() == null || !runningApps.containsKey(appName)) {
+					System.out.println("[M-" + id + "] Invalid job / application");
+					pw.println("Invalid job / application");
+					break;
+				}
+				child = runningApps.get(appName);
+				if (child == null) {
+					System.out.println("[M-" + id + "] No such process: " + appName);
+					pw.println("No such process available");
+					break;
+				}
+				if (request.getContents().size() > 1 && request.getContents().get(1) != null) {
+					content = request.getContents().get(1);
+					PrintWriter childOut = new PrintWriter(child.getOutputStream());
+					childOut.println(content);
+					childOut.flush();
+					childOut.close();
+					pw.println("OK");
+				} else {
+					pw.println("No content available");
+				}
+				break;
+			case COMPUTEWAIT:
+				appName = request.getContents().get(0);
+				if (appName == null || request.getJobType() == null || !runningApps.containsKey(appName)) {
+					System.out.println("[M-" + id + "] Invalid job / application");
+					pw.println("Invalid job / application");
+					break;
+				}
+				child = runningApps.get(appName);
+				if (child == null) {
+					System.out.println("[M-" + id + "] No such process: " + appName);
+					pw.println("No such process available");
+					break;
+				}
+				if (request.getContents().size() > 1 && request.getContents().get(1) != null) {
+					content = request.getContents().get(1);
+					PrintWriter childOut = new PrintWriter(child.getOutputStream());
+					BufferedReader childIn = new BufferedReader(new InputStreamReader(child.getInputStream()));
+					childOut.println(content);
+					childOut.flush();
+					String response = "";
+					try {
+						response = childIn.readLine();
+					} catch (IOException e) {
+						System.out.println("[M-" + id + "] Failed reading reply from " + appName + ": " + e.getMessage());
+						pw.println("Failed getting response");
+						break;
+					}
+					pw.println(response);
+					try {
+						childIn.close();
+						childOut.close();
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				} else {
+					pw.println("No content available");
+				}
 				break;
 			default:
 				pw.println("Invalid request");

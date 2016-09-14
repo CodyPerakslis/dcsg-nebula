@@ -245,7 +245,7 @@ public class ResourceManager {
 							if (busyNodes.containsKey(nodeId)) {
 								nodeInfo.setNote("" + busyNodes.get(nodeId).getRemainingTime());
 							} else {
-								nodeInfo.setNote("0");
+								nodeInfo.setNote("available");
 							}
 							reply.put(nodeId, nodeInfo);
 						}

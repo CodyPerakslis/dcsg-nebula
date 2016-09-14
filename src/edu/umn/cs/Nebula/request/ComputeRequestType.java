@@ -1,5 +1,7 @@
 package edu.umn.cs.Nebula.request;
 
 public enum ComputeRequestType {
-	GET, COMPUTE, PING, UPLOAD, DOWNLOAD
+	PING, UPLOAD, DOWNLOAD, 
+	RUNAPP, STOPAPP,
+	COMPUTE, COMPUTEWAIT
 }
