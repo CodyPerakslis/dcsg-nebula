@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.server;
+package edu.umn.cs.Nebula.instance;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -179,7 +179,7 @@ public class MobileServer {
 			in.close();
 			socket.close();
 		} catch (IOException e) {
-			System.out.println("Failed connecting to the Mobile Server: " + e);
+			System.out.println("Failed connecting to the Mobile Node: " + e.getMessage());
 		}
 		return result;
 	}
@@ -215,7 +215,7 @@ public class MobileServer {
 				request = gson.fromJson(input, MobileRequest.class);
 				cRequest = gson.fromJson(input, ComputeRequest.class);
 			} catch (IOException e) {
-				System.err.println("[MOBILE] Error: " + e);
+				System.err.println("[MOBILE] Error: " + e.getMessage());
 			}
 
 			if (request != null && request.getType() != null) {

@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.server;
+package edu.umn.cs.Nebula.instance;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -6,6 +6,8 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
@@ -13,6 +15,7 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
+import edu.umn.cs.Nebula.model.DatabaseConnector;
 import edu.umn.cs.Nebula.model.Lease;
 import edu.umn.cs.Nebula.model.NodeInfo;
 import edu.umn.cs.Nebula.model.NodeType;
@@ -27,28 +30,56 @@ import edu.umn.cs.Nebula.request.SchedulerRequest;
  */
 public class ResourceManager {
 	private static final long maxInactive = 5000; 	// in milliseconds
-	private static final int updateInterval = 4000; // in milliseconds
+	private static final int updateInterval = 3000; // in milliseconds
 	private static final int nodesPort = 6424;
 	private static final int schedulerPort = 6426;
-	private static final int poolSize = 20;
+	private static final int poolSize = 50;
 	private static final Object nodesLock = new Object();
 	private static final Gson gson = new Gson();
 
 	private static HashMap<String, NodeInfo> nodes = new HashMap<String, NodeInfo>();
 	private static HashMap<String, Lease> busyNodes = new HashMap<String, Lease>();
 
+	// database configuration
+	private static String username = "nebula";
+	private static String password = "kvm";
+	private static String serverName = "localhost";
+	private static String dbName = "nebula";
+	private static int dbPort = 3306; // set to 3306 in hemant, 3307 in local
+	private static DatabaseConnector dbConn;
 
 	public static void main(String[] args) {
+		if (args.length < 5) {
+			System.out.println("[RM] Using default DB configuration");
+		} else {
+			username = args[0];
+			password = args[1];
+			serverName = args[2];
+			dbName = args[3];
+			dbPort = Integer.parseInt(args[4]);
+		}
+
+		// Setup the database connection
+		System.out.print("[RM] Connecting to the database ...");	
+		dbConn = new DatabaseConnector(username, password, serverName, dbName, dbPort);
+		if (!dbConn.connect()) {
+			System.out.println("[FAILED]");
+			return;
+		} else {
+			System.out.println("[OK]");
+		}
+
+		// Run a server thread that handles heartbeat from nodes
+		Thread nodesThread = new Thread(new NodesServerThread());
+		nodesThread.start();
+
 		// Run a server thread that handles requests from schedulers
 		Thread schedulerThread = new Thread(new SchedulerServerThread());
 		schedulerThread.start();
 
-		// Run a server thread that handles requests from nodes
-		Thread nodesThread = new Thread(new NodesServerThread());
-		nodesThread.start();
-		
 		long now;
 		NodeInfo nodeInfo = null;
+		String sqlStatement;
 		HashSet<String> removedNodes = new HashSet<String>();
 		while (true) {
 			now = System.currentTimeMillis();
@@ -61,9 +92,17 @@ public class ResourceManager {
 						removedNodes.add(nodeId);
 					}
 				}
-				for (String nodeId: removedNodes) {
-					nodes.remove(nodeId);
-				}
+			}
+			// optionally save inactive nodes information to the DB
+			for (String nodeId: removedNodes) {
+				nodeInfo = nodes.remove(nodeId);
+				sqlStatement = "UPDATE node SET bandwidth = " + nodeInfo.getBandwidth()
+				+ ", online = " + nodeInfo.getLastOnline()
+				+ ", latitude = " + nodeInfo.getLatitude()
+				+ ", longitude = " + nodeInfo.getLongitude()
+				+ " WHERE id = '" + nodeInfo.getId() + "'"
+				+ " AND type = '" + nodeInfo.getNodeType() + "';";
+				dbConn.updateQuery(sqlStatement);
 			}
 			System.out.println("[RM] Compute Nodes: " + nodes.keySet());
 			removedNodes.clear();
@@ -287,6 +326,9 @@ public class ResourceManager {
 	private static boolean handleHeartbeat(NodeRequest request) {
 		NodeInfo node = null;
 		boolean success = false;
+		boolean newNode = false;
+		String sqlStatement;
+		ResultSet queryResult;
 
 		if (request != null)
 			node = request.getNode();
@@ -308,21 +350,54 @@ public class ResourceManager {
 						nodes.get(node.getId()).addBandwidth(node.getBandwidth());
 					}
 				} else {
-					nodes.put(node.getId(), node);	
+					newNode = true;
+					nodes.put(node.getId(), node);
 				}
 			}
 			success = true;
+
+			// save the information about a new node to the DB
+			if (newNode) {
+				sqlStatement = "SELECT bandwidth, latency FROM node"
+						+ " WHERE id = '" + node.getId() + "' "
+						+ " AND type = '" + node.getNodeType() + "';";
+				queryResult = dbConn.selectQuery(sqlStatement);
+				try {
+					if (queryResult != null && queryResult.next()) {
+						node.addBandwidth(queryResult.getDouble("bandwidth"));
+						node.addLatency(queryResult.getDouble("latency"));
+					} else {
+						sqlStatement = "INSERT INTO node (id, ip, latitude, longitude, bandwidth, latency, type, online)"
+								+ " VALUES ('" + node.getId() + "', '" + node.getIp() + "', '" + node.getLatitude()
+								+ "', '" + node.getLongitude() + "', " + node.getBandwidth() + ", " + node.getLatency()
+								+ ", '" + node.getNodeType() + "', '" + System.currentTimeMillis() + "');";
+						dbConn.updateQuery(sqlStatement);
+					}
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
+			}
 			break;
 		case OFFLINE:
+			NodeInfo leavingNode = null;
 			// a request indicating that the node is going to be offline/inactive
 			if (!node.getNodeType().equals(NodeType.COMPUTE)) {
 				return false;
 			}
 			synchronized (nodesLock) {
-				nodes.remove(node.getId());
+				leavingNode = nodes.remove(node.getId());
 			}
 			success = true;
-
+			// save the information about a leaving node to the DB
+			if (leavingNode != null) {
+				sqlStatement = "UPDATE node SET bandwidth = " + leavingNode.getBandwidth()
+				+ ", online = " + System.currentTimeMillis()
+				+ ", latitude = " + node.getLatitude()
+				+ ", longitude = " + node.getLongitude()
+				+ " WHERE id = '" + leavingNode.getId() + "'"
+				+ " AND type = '" + node.getNodeType() + "';";
+				dbConn.updateQuery(sqlStatement);
+			}
 			break;
 		default:
 			System.out.println("[RM] Invalid request: " + request.getType());
