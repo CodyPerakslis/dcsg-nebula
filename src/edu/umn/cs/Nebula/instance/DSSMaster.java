@@ -31,7 +31,7 @@ public class DSSMaster {
 	public static void main(String args[]) {
 		if (args.length < 4) {
 			nodeHandler = new NodeHandler(6423, NodeType.STORAGE, 5000, 50);
-			nodeHandler.connectDB("nebula", "kvm", "localhost", "nebula", 3307); // set to 3306 in hemant, 3307 in local
+			nodeHandler.connectDB("nebula", "kvm", "localhost", "nebula", 3306); // set to 3306 in hemant, 3307 in local
 		} else if (args.length == 4){
 			nodeHandler = new NodeHandler(Integer.parseInt(args[0]), NodeType.valueOf(args[1]),
 					Integer.parseInt(args[2]), Integer.parseInt(args[3]));

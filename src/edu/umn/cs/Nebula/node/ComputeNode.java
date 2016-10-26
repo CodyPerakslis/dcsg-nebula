@@ -18,25 +18,30 @@ import edu.umn.cs.Nebula.request.ComputeRequest;
 import edu.umn.cs.Nebula.request.ComputeRequestType;
 
 public class ComputeNode extends Node {
-	private static final int interval = 2000; // in milliseconds
-	private static final int poolSize = 10;
-	private static final int requestPort = 6425;
-	// private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
-	private static final String nebulaUrl = "http://localhost:13993/NebulaCentral/NodeHandler";
+	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
+	// private static final String nebulaUrl = "http://localhost:13993/NebulaCentral/NodeHandler";
 
 	private static Gson gson = new Gson();
 
+	public static void main(String args[]) throws InterruptedException {
+		int requestPort = 6425;
+		connect(nebulaUrl, NodeType.COMPUTE);
+		if (!isReady()) return;
+
+		startListeningForTasks(1, requestPort);
+	}
+	
 	/**
 	 * Make sure that the node is ready to run, i.e., it has its own id.
 	 * @throws InterruptedException
 	 */
-	private static boolean isReady() throws InterruptedException {
+	protected static boolean isReady() throws InterruptedException {
 		final int maxFailure = 5;
 		int counter = 0;
 		while (id == null) {
 			if (counter < maxFailure) {
 				counter++;
-				Thread.sleep(interval);
+				Thread.sleep(2000);
 			} else {
 				System.out.println("[C-" + id + "] Failed getting node id. Exiting.");
 				return false;
@@ -45,23 +50,16 @@ public class ComputeNode extends Node {
 		return true;
 	}
 
-	public static void main(String args[]) throws InterruptedException {
-		connect(nebulaUrl, NodeType.COMPUTE);
-		if (!isReady()) return;
-
-		runServerTask();
-	}
-
 	/**
 	 * Here, the compute node is performing as a client-server that listens to end users on a specific port.
 	 */
-	private static void runServerTask() {
+	protected static void startListeningForTasks(int poolSize, int port) {
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
 
 		try {
-			serverSock = new ServerSocket(requestPort);
-			System.out.println("[C-" + id + "] Listening for client requests on port " + requestPort);
+			serverSock = new ServerSocket(port);
+			System.out.println("[C-" + id + "] Listening for client requests on port " + port);
 			while (true) { // listen for client requests
 				requestPool.submit(new RequestHandler(serverSock.accept()));
 			}
@@ -74,7 +72,7 @@ public class ComputeNode extends Node {
 	 * This thread is invoked when the node receives a request.
 	 * Handle the request depending on the type of the task.
 	 */
-	public static class RequestHandler implements Runnable {
+	protected static class RequestHandler implements Runnable {
 		private final Socket clientSock;
 
 		private RequestHandler(Socket sock) {
@@ -96,6 +94,7 @@ public class ComputeNode extends Node {
 				System.out.println("[C-" + id + "] Received a " + request.getRequestType() + " request from " + clientSock.getInetAddress().toString());
 				
 				switch(request.getRequestType()) {
+				// TODO implement other compute request handlers
 				case PING:
 					ComputeRequest reply = new ComputeRequest(ip, JobType.MOBILE, ComputeRequestType.PING);
 					pw.println(gson.toJson(reply));

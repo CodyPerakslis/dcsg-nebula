@@ -1,3 +1,25 @@
+CREATE TABLE node (
+	id varchar(30),
+	ip varchar(30) not null,
+	type varchar(10),
+	latitude double,
+	longitude double,
+	online long,
+	PRIMARY KEY (id, type)
+);
+
+CREATE TABLE node_conn (
+	source varchar(30),
+	dest varchar(30),
+	bandwidth float,
+	latency float,
+	last_update long,
+	PRIMARY KEY (source, dest),
+	FOREIGN KEY (source) REFERENCES node(id) ON DELETE CASCADE,
+	FOREIGN KEY (dest) REFERENCES node(id) ON DELETE CASCADE
+);
+
+
 CREATE TABLE application (
 	id int unsigned,
 	name varchar(30),

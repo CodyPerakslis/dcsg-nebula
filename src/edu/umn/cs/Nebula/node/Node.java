@@ -52,14 +52,8 @@ public abstract class Node {
 					if (id == null) {
 						getNodeInformation();
 					}
-
-					if (bandwidth <= 0) {
-						out.write("id=" + id + "&ip=" + ip + "&requestType=ONLINE&nodeType=" + type + 
-								"&latitude=" + coordinate.getLatitude() + "&longitude=" + coordinate.getLongitude());
-					} else {
-						out.write("id=" + id  + "&ip=" + ip + "&requestType=ONLINE&nodeType=" + type + 
-								"&latitude=" + coordinate.getLatitude() + "&longitude=" + coordinate.getLongitude() + "&bandwidth=" + bandwidth);
-					}
+					out.write("id=" + id + "&ip=" + ip + "&requestType=ONLINE&nodeType=" + type + 
+							"&latitude=" + coordinate.getLatitude() + "&longitude=" + coordinate.getLongitude());
 					out.flush();
 					conn.connect();
 

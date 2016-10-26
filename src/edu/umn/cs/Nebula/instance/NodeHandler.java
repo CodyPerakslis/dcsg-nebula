@@ -6,8 +6,6 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
@@ -23,7 +21,7 @@ import edu.umn.cs.Nebula.request.NodeRequest;
 public class NodeHandler {
 	private final Gson gson = new Gson();
 	private final int updateInterval = 3000; // in milliseconds
-	
+
 	private int maxInactive;
 	private int poolSize;
 	private int port;
@@ -32,7 +30,7 @@ public class NodeHandler {
 	private boolean databaseConnected = false;
 	private Thread nodeMonitor;
 	private Thread nodeServerThread;
-	
+
 	public HashMap<String, NodeInfo> nodes = new HashMap<String, NodeInfo>();
 	public final Object nodesLock = new Object();
 
@@ -46,11 +44,11 @@ public class NodeHandler {
 	public void start() {
 		nodeMonitor = new Thread(new NodeMonitorThread());
 		nodeMonitor.start();
-		
+
 		nodeServerThread = new Thread(new NodeServerThread());
 		nodeServerThread.start();
 	}
-	
+
 	/**
 	 * Connect to the node database. This is used if the handler needs to store the node information to the database.
 	 * @param username
@@ -98,12 +96,11 @@ public class NodeHandler {
 				if (databaseConnected) {
 					for (String nodeId: removedNodes) {
 						nodeInfo = nodes.remove(nodeId);
-						sqlStatement = "UPDATE node SET bandwidth = " + nodeInfo.getBandwidth()
-							+ ", online = " + nodeInfo.getLastOnline()
-							+ ", latitude = " + nodeInfo.getLatitude()
-							+ ", longitude = " + nodeInfo.getLongitude()
-							+ " WHERE id = '" + nodeInfo.getId() + "'"
-							+ " AND type = '" + nodeInfo.getNodeType() + "';";
+						sqlStatement = "UPDATE node SET online = " + nodeInfo.getLastOnline()
+						+ ", latitude = " + nodeInfo.getLatitude()
+						+ ", longitude = " + nodeInfo.getLongitude()
+						+ " WHERE id = '" + nodeInfo.getId() + "'"
+						+ " AND type = '" + nodeInfo.getNodeType() + "';";
 						dbConn.updateQuery(sqlStatement);
 					}
 				}
@@ -118,7 +115,7 @@ public class NodeHandler {
 
 		}
 	}
-	
+
 	/**
 	 * This thread will wait and accept connections from nodes at port @port 
 	 * and launch a handler upon receiving requests. 
@@ -148,7 +145,7 @@ public class NodeHandler {
 			}
 		}
 	}
-	
+
 	/**
 	 * Worker thread that handles node requests and heartbeat.
 	 * 
@@ -190,14 +187,14 @@ public class NodeHandler {
 					success = handleHeartbeat(nodeRequest);
 					out.println(gson.toJson(success));
 					break;
+				case GET:
+					HashMap<String, NodeInfo> result = new HashMap<String, NodeInfo>();
+					result.putAll(nodes);
+					out.println(gson.toJson(result));
+					break;
 				default:
-					if (nodeRequest.getType().equals(nodeType)) {
-						HashMap<String, NodeInfo> result = new HashMap<String, NodeInfo>();
-						result.putAll(nodes);
-						out.println(gson.toJson(result));
-					} else {
-						out.println(gson.toJson(success));
-					}
+					System.out.println("[NODE_HANDLER] Receive an invalid request of type: " + nodeRequest.getType());
+					out.print(gson.toJson(success));
 				}
 			} else {
 				out.println(gson.toJson(success));
@@ -210,7 +207,7 @@ public class NodeHandler {
 				if (clientSock != null) clientSock.close();
 			} catch (IOException e) {}
 		}
-		
+
 		/**
 		 * Handle an online/offline message from a node.
 		 * 
@@ -222,7 +219,6 @@ public class NodeHandler {
 			boolean success = false;
 			boolean newNode = false;
 			String sqlStatement;
-			ResultSet queryResult;
 
 			if (request != null)
 				node = request.getNode();
@@ -251,24 +247,11 @@ public class NodeHandler {
 
 				// save the information about a new node to the DB
 				if (databaseConnected && newNode) {
-					sqlStatement = "SELECT bandwidth, latency FROM node"
-							+ " WHERE id = '" + node.getId() + "' "
-							+ " AND type = '" + node.getNodeType() + "';";
-					queryResult = dbConn.selectQuery(sqlStatement);
-					try {
-						if (queryResult != null && queryResult.next()) {
-							node.addBandwidth(queryResult.getDouble("bandwidth"));
-							node.addLatency(queryResult.getDouble("latency"));
-						} else {
-							sqlStatement = "INSERT INTO node (id, ip, latitude, longitude, bandwidth, latency, type, online)"
-									+ " VALUES ('" + node.getId() + "', '" + node.getIp() + "', '" + node.getLatitude()
-									+ "', '" + node.getLongitude() + "', " + node.getBandwidth() + ", " + node.getLatency()
-									+ ", '" + node.getNodeType() + "', '" + System.currentTimeMillis() + "');";
-							dbConn.updateQuery(sqlStatement);
-						}
-					} catch (SQLException e) {
-						e.printStackTrace();
-					}
+					sqlStatement = "INSERT INTO node (id, ip, latitude, longitude, type, online)"
+							+ " VALUES ('" + node.getId() + "', '" + node.getIp() + "', '" + node.getLatitude()
+							+ "', '" + node.getLongitude() + "', '" + node.getNodeType() + "', " + System.currentTimeMillis() + ")"
+							+ " ON DUPLICATE KEY UPDATE online="  + System.currentTimeMillis() + ";";
+					dbConn.updateQuery(sqlStatement);
 				}
 				break;
 			case OFFLINE:
@@ -283,13 +266,12 @@ public class NodeHandler {
 				success = true;
 				// save the information about a leaving node to the DB
 				if (databaseConnected && leavingNode != null) {
-					sqlStatement = "UPDATE node SET bandwidth = " + leavingNode.getBandwidth()
-						+ ", online = " + System.currentTimeMillis()
-						+ ", latitude = " + node.getLatitude()
-						+ ", longitude = " + node.getLongitude()
-						+ " WHERE id = '" + leavingNode.getId() + "'"
-						+ " AND type = '" + node.getNodeType() + "';";
-						dbConn.updateQuery(sqlStatement);
+					sqlStatement = "UPDATE node SET online = " + System.currentTimeMillis()
+					+ ", latitude = " + node.getLatitude()
+					+ ", longitude = " + node.getLongitude()
+					+ " WHERE id = '" + leavingNode.getId() + "'"
+					+ " AND type = '" + node.getNodeType() + "';";
+					dbConn.updateQuery(sqlStatement);
 				}
 				break;
 			default:

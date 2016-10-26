@@ -24,7 +24,7 @@ import edu.umn.cs.Nebula.request.SchedulerRequest;
  *
  */
 public class ResourceManager {
-	private static final int schedulerPort = 6426;
+	private static final int schedulerPort = 6424;
 	private static final int poolSize = 10;
 	private static final Gson gson = new Gson();
 
@@ -34,7 +34,7 @@ public class ResourceManager {
 	public static void main(String[] args) {
 		if (args.length < 4) {
 			nodeHandler = new NodeHandler(6422, NodeType.COMPUTE, 5000, 50);
-			nodeHandler.connectDB("nebula", "kvm", "localhost", "nebula", 3307); // set to 3306 in hemant, 3307 in local
+			nodeHandler.connectDB("nebula", "kvm", "localhost", "nebula", 3306); // set to 3306 in hemant, 3307 in local
 		} else if (args.length == 4){
 			nodeHandler = new NodeHandler(Integer.parseInt(args[0]), NodeType.valueOf(args[1]),
 					Integer.parseInt(args[2]), Integer.parseInt(args[3]));
@@ -48,6 +48,9 @@ public class ResourceManager {
 		start();
 	}
 
+	/**
+	 * Start listening to scheduler requests on port @schedulerPort.
+	 */
 	private static void start() {
 		// Listening for client requests
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
@@ -108,7 +111,7 @@ public class ResourceManager {
 				System.out.println("[RM] Scheduler request not found.");
 				out.println(gson.toJson(null));
 			} else {
-				System.out.println("[RM] Receive a " + request.getType() + " request from " + request.getSchedulerName());
+				// System.out.println("[RM] Receive a " + request.getType() + " request from " + request.getSchedulerName());
 
 				switch(request.getType()) {
 				case GET:

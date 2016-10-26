@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.node;
+package edu.umn.cs.Nebula.mobile;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -10,25 +10,21 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.HttpURLConnection;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import edu.umn.cs.Nebula.model.JobType;
 import edu.umn.cs.Nebula.model.NodeType;
+import edu.umn.cs.Nebula.node.ComputeNode;
 import edu.umn.cs.Nebula.request.ComputeRequest;
 import edu.umn.cs.Nebula.request.ComputeRequestType;
 
-public class MobileNode extends Node {
-	private static final int poolSize = 10;
-	private static final int requestPort = 6425;
+public class MobileNode extends ComputeNode {
 	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
 	private static final String mobileServerUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/MobileHandler";
 	private static final String fileDirectory = "/home/nebula/Nebula/Mobile/";
@@ -37,27 +33,6 @@ public class MobileNode extends Node {
 
 	private static ArrayList<String> neighbors = new ArrayList<String>();
 	private static HashMap<String, Process> runningApps;
-
-	/**
-	 * Make sure that the node is ready to run, i.e., it has a valid id.
-	 * @throws InterruptedException
-	 */
-	private static boolean isReady() throws InterruptedException {
-		final int interval = 2000; // in milliseconds
-		final int maxFailure = 5;
-		int counter = 0;
-
-		while (id == null) {
-			if (counter < maxFailure) {
-				counter++;
-				Thread.sleep(interval);
-			} else {
-				System.out.println("[M-" + id + "] Failed getting node id. Exits.");
-				return false;
-			}
-		}
-		return true;
-	}
 
 	/**
 	 * A thread class that periodically send a heartbeat to the Mobile Server.
@@ -130,8 +105,8 @@ public class MobileNode extends Node {
 	}
 
 	public static void main(String args[]) throws InterruptedException {
-		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
-		ServerSocket serverSock = null;
+		int poolSize = 10;
+		int requestPort = 6425;
 		runningApps = new HashMap<String, Process>();
 
 		// Connect to Nebula Central
@@ -142,17 +117,7 @@ public class MobileNode extends Node {
 		Thread mobileThread = new Thread(new MobileServerThread(mobileServerUrl));
 		mobileThread.start();
 
-		try {
-			// Getting ready to accept connection
-			serverSock = new ServerSocket(requestPort);
-			System.out.println("[M-" + id + "] Listening for client requests on port " + requestPort);
-			while (true) { // listen for client requests
-				requestPool.submit(new RequestHandler(serverSock.accept()));
-			}
-		} catch (IOException e) {
-			System.err.println("[M-" + id + "] Exits: " + e);
-			return;
-		}
+		startListeningForTasks(poolSize, requestPort);
 	}
 
 	/**

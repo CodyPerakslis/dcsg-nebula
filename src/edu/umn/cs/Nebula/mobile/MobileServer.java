@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.instance;
+package edu.umn.cs.Nebula.mobile;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -16,7 +16,6 @@ import java.util.concurrent.Executors;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import edu.umn.cs.Nebula.mobile.Grid;
 import edu.umn.cs.Nebula.model.NodeInfo;
 import edu.umn.cs.Nebula.request.ComputeRequest;
 import edu.umn.cs.Nebula.request.MobileRequest;
@@ -25,39 +24,37 @@ import edu.umn.cs.Nebula.request.SchedulerRequestType;
 
 public class MobileServer {
 	private static final Gson gson = new Gson();
-	private static boolean success = false;
 	private static final int requestPoolSize = 20;
-
 	private static final String resourceManager = "localhost";
-	private static final int resourceManagerPort = 6426;
+	private static final int resourceManagerPort = 6424;
 	private static final int requestPort = 6429;
 	private static final int nodePort = 6425;
-
+	private static final Object nodesLock = new Object();
+	
+	private static boolean success = false;
 	private static HashMap<String, NodeInfo> nodes;
 	private static LinkedList<String> activeNodes;
 	private static Grid index;
-
-	private static final Object nodesLock = new Object();
 
 	public static void main(String[] args) throws InterruptedException {
 		nodes = new HashMap<String, NodeInfo>();	
 		activeNodes = new LinkedList<String>();
 		index = new Grid(24, 25, 49, -125, -65);
 
-		int counter = 0;
-		int maxCounter = 5;
-
 		// Connecting to Nebula Server
 		Thread nodeThread = new Thread(new NebulaThread());
 		nodeThread.start();
+		
+		int counter = 0;
+		int maxCounter = 5;
 		while (!success) {
-			Thread.sleep(1000);
-			counter++;
-			if (counter == maxCounter) {
+			if (counter >= maxCounter) {
 				nodeThread.interrupt();
 				System.out.println("[MOBILE] Failed connecting to Nebula Server at: " + resourceManager);
-				System.exit(0);
+				System.exit(1);
 			}
+			Thread.sleep(1000);
+			counter++;
 		}
 
 		// Listening for client requests
@@ -77,8 +74,7 @@ public class MobileServer {
 	}
 
 	/**
-	 * Thread class used to connect to Nebula Server.
-	 * This thread periodically update the list of online nodes from the Nebula Server.
+	 * Thread class used to connect and get a list of available nodes from Nebula Resource Manager.
 	 * 
 	 * @author albert
 	 */
@@ -104,13 +100,8 @@ public class MobileServer {
 					in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 					temp = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, NodeInfo>>(){}.getType());
 				} catch (IOException e) {
-					System.out.println("[MOBILE] Failed connecting to the Nebula Monitor: " + e.getMessage());
-					try {
-						Thread.sleep(interval);
-					} catch (InterruptedException e1) {
-						System.out.println("[MOBILE] Nebula Thread exits: " + e1.getMessage());
-						return;
-					}
+					System.out.println("[MOBILE] Failed connecting to the Nebula Resource Manager: " + e.getMessage());
+					return;
 				}
 				
 				try {
@@ -161,29 +152,6 @@ public class MobileServer {
 		}
 	}
 
-	private static String sendApplicationToNode(String node, ComputeRequest request) {
-		PrintWriter out = null;
-		BufferedReader in = null;
-		String result = "Failed";
-
-		try {
-			Socket socket = new Socket(node, nodePort);
-			out = new PrintWriter(socket.getOutputStream(), true);
-			out.println(gson.toJson(request));
-			out.flush();
-
-			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-			result = in.readLine();
-
-			out.close();
-			in.close();
-			socket.close();
-		} catch (IOException e) {
-			System.out.println("Failed connecting to the Mobile Node: " + e.getMessage());
-		}
-		return result;
-	}
-	
 	/**
 	 * Thread class used to serve a client's request.
 	 * 
@@ -202,7 +170,7 @@ public class MobileServer {
 			PrintWriter out = null;
 			ArrayList<String> result = new ArrayList<String>();
 			String input;
-			MobileRequest request = null;
+			MobileRequest mRequest = null;
 			ComputeRequest cRequest = null;
 			double latitude, longitude;
 
@@ -212,20 +180,20 @@ public class MobileServer {
 
 				// read the input message and parse it as a node request
 				input = in.readLine();
-				request = gson.fromJson(input, MobileRequest.class);
+				mRequest = gson.fromJson(input, MobileRequest.class);
 				cRequest = gson.fromJson(input, ComputeRequest.class);
 			} catch (IOException e) {
 				System.err.println("[MOBILE] Error: " + e.getMessage());
 			}
 
-			if (request != null && request.getType() != null) {
-				// TODO handle client's request
+			if (mRequest != null && mRequest.getType() != null) {
 				// System.out.println("[MOBILE] Handling MobileRequest of type " + request.getType());
-				switch (request.getType()) {
+				switch (mRequest.getType()) {
 				case LOCAL:
-					if (request.getNode() != null) {
-						latitude = request.getNode().getLatitude();
-						longitude = request.getNode().getLongitude();
+					// return a list of nodes that are located within the same cell as the client
+					if (mRequest.getNode() != null) {
+						latitude = mRequest.getNode().getLatitude();
+						longitude = mRequest.getNode().getLongitude();
 						LinkedList<String> temp = index.getItems(index.getGridLocation(latitude, longitude));
 						for (String node: temp) {
 							if (activeNodes.contains(node))
@@ -234,10 +202,11 @@ public class MobileServer {
 					}
 					break;
 				case ALL:
+					// return all available nodes
 					result.addAll(activeNodes);
 					break;
 				default:
-					System.out.println("[MOBILE] Undefined request type: " + request.getType());
+					System.out.println("[MOBILE] Undefined request type: " + mRequest.getType());
 					result.add("Mobile Request Failed");
 				}
 			} else if (cRequest != null && cRequest.getRequestType() != null) {
@@ -254,16 +223,16 @@ public class MobileServer {
 							System.out.println("[MOBILE] No available nodes");
 							status = "Nodes not available";
 						} else {
-							status = sendApplicationToNode(activeNodes.getFirst(), cRequest);
+							status = sendRequestToNode(activeNodes.getFirst(), cRequest);
 						}
-					} else {
-						// TODO implement some policy
+					} else if (activeNodes.contains(cRequest.getIp())) {
+						status = sendRequestToNode(cRequest.getIp(), cRequest);
 					}
 					result.add(status);
 					break;
 				case STOPAPP:
 					if (cRequest.getIp() != null && cRequest.getContents() != null && !cRequest.getContents().isEmpty()) {
-						status = sendApplicationToNode(cRequest.getIp(), cRequest);
+						status = sendRequestToNode(cRequest.getIp(), cRequest);
 					}
 					result.add(status);
 					break;
@@ -286,5 +255,29 @@ public class MobileServer {
 				System.err.println("[MOBILE] Failed to close streams or socket: " + e);
 			}
 		}
+		
+		private static String sendRequestToNode(String nodeIp, ComputeRequest request) {
+			PrintWriter out = null;
+			BufferedReader in = null;
+			String result = "Failed";
+
+			try {
+				Socket socket = new Socket(nodeIp, nodePort);
+				out = new PrintWriter(socket.getOutputStream(), true);
+				out.println(gson.toJson(request));
+				out.flush();
+
+				in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+				result = in.readLine();
+
+				out.close();
+				in.close();
+				socket.close();
+			} catch (IOException e) {
+				System.out.println("Failed connecting to the Mobile Node: " + e.getMessage());
+			}
+			return result;
+		}
+		
 	}
 }
