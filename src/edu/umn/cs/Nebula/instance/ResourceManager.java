@@ -27,7 +27,7 @@ public class ResourceManager {
 	private static final int schedulerPort = 6426;
 	private static final int poolSize = 10;
 	private static final Gson gson = new Gson();
-	
+
 	private static HashMap<String, Lease> busyNodes = new HashMap<String, Lease>();
 	private static NodeHandler nodeHandler;
 
@@ -44,34 +44,29 @@ public class ResourceManager {
 			nodeHandler.connectDB(args[4], args[5], args[6], args[7], Integer.parseInt(args[8]));
 		}
 		nodeHandler.start();
-		
-		// Run a server thread that handles requests from schedulers
-		Thread schedulerHandler = new Thread(new SchedulerServerThread());
-		schedulerHandler.start();
+
+		start();
 	}
 
-	private static class SchedulerServerThread implements Runnable {
-		@Override
-		public void run() {
-			// Listening for client requests
-			ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
-			ServerSocket serverSock = null;
-			try {
-				serverSock = new ServerSocket(schedulerPort);
-				System.out.println("[RM] Listening for scheduler requests on port " + schedulerPort);
-				while (true) {
-					requestPool.submit(new SchedulerHandler(serverSock.accept()));
-				}
-			} catch (IOException e) {
-				System.err.println("[RM] Failed to establish listening socket: " + e);
-			} finally {
-				requestPool.shutdown();
-				if (serverSock != null) {
-					try {
-						serverSock.close();
-					} catch (IOException e) {
-						System.err.println("[RM] Failed to close listening socket");
-					}
+	private static void start() {
+		// Listening for client requests
+		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
+		ServerSocket serverSock = null;
+		try {
+			serverSock = new ServerSocket(schedulerPort);
+			System.out.println("[RM] Listening for scheduler requests on port " + schedulerPort);
+			while (true) {
+				requestPool.submit(new SchedulerHandler(serverSock.accept()));
+			}
+		} catch (IOException e) {
+			System.err.println("[RM] Failed to establish listening socket: " + e);
+		} finally {
+			requestPool.shutdown();
+			if (serverSock != null) {
+				try {
+					serverSock.close();
+				} catch (IOException e) {
+					System.err.println("[RM] Failed to close listening socket");
 				}
 			}
 		}

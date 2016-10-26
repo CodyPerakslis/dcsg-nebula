@@ -46,32 +46,28 @@ public class DSSMaster {
 		jedis.connect();
 
 		// Run a server thread that handles requests from
-		Thread dssServerThread = new Thread(new DSSServerThread());
-		dssServerThread.start();
+		start();
 	}
 
-	private static class DSSServerThread implements Runnable {
-		@Override
-		public void run() {
-			// Listening for client requests
-			ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
-			ServerSocket serverSock = null;
-			try {
-				serverSock = new ServerSocket(dssPort);
-				System.out.println("[DSSMASTER] Listening for DSS requests on port " + dssPort);
-				while (true) {
-					requestPool.submit(new DSSHandler(serverSock.accept()));
-				}
-			} catch (IOException e) {
-				System.err.println("[DSSMASTER] Failed to establish listening socket: " + e);
-			} finally {
-				requestPool.shutdown();
-				if (serverSock != null) {
-					try {
-						serverSock.close();
-					} catch (IOException e) {
-						System.err.println("[DSSMASTER] Failed to close listening socket");
-					}
+	private static void start() {
+		// Listening for client requests
+		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
+		ServerSocket serverSock = null;
+		try {
+			serverSock = new ServerSocket(dssPort);
+			System.out.println("[DSSMASTER] Listening for DSS requests on port " + dssPort);
+			while (true) {
+				requestPool.submit(new DSSHandler(serverSock.accept()));
+			}
+		} catch (IOException e) {
+			System.err.println("[DSSMASTER] Failed to establish listening socket: " + e);
+		} finally {
+			requestPool.shutdown();
+			if (serverSock != null) {
+				try {
+					serverSock.close();
+				} catch (IOException e) {
+					System.err.println("[DSSMASTER] Failed to close listening socket");
 				}
 			}
 		}
