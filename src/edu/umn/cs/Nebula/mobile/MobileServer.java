@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -30,7 +31,7 @@ public class MobileServer {
 	private static final int requestPort = 6429;
 	private static final int nodePort = 6425;
 	private static final Object nodesLock = new Object();
-	
+
 	private static boolean success = false;
 	private static HashMap<String, NodeInfo> nodes;
 	private static LinkedList<String> activeNodes;
@@ -44,7 +45,7 @@ public class MobileServer {
 		// Connecting to Nebula Server
 		Thread nodeThread = new Thread(new NebulaThread());
 		nodeThread.start();
-		
+
 		int counter = 0;
 		int maxCounter = 5;
 		while (!success) {
@@ -103,7 +104,7 @@ public class MobileServer {
 					System.out.println("[MOBILE] Failed connecting to the Nebula Resource Manager: " + e.getMessage());
 					return;
 				}
-				
+
 				try {
 					out.close();
 					in.close();
@@ -115,9 +116,11 @@ public class MobileServer {
 				synchronized (nodesLock) {
 					for (String nodeId: temp.keySet()) {
 						if (temp.get(nodeId).getNote().equalsIgnoreCase("available")) {
+							if (!nodes.containsKey(nodeId)) {
+								activeNodes.add(nodeId);
+								index.insertItem(nodeId, temp.get(nodeId).getLatitude(), temp.get(nodeId).getLongitude());
+							}
 							nodes.put(nodeId, temp.get(nodeId));
-							activeNodes.add(nodeId);
-							index.insertItem(nodeId, temp.get(nodeId).getLatitude(), temp.get(nodeId).getLongitude());
 						}
 					}	
 					// remove nodes that become inactive
@@ -133,13 +136,13 @@ public class MobileServer {
 					}
 				}
 				removedNodes.clear();
-				
+
 				if (isFirst) {
 					success = true;
 					isFirst = false;
 					System.out.println("[MOBILE] Connected to Nebula Server.");
 				} else {
-					System.out.println("[MOBILE] Available nodes: " + nodes.keySet());
+					System.out.println("[MOBILE] Available nodes: " + activeNodes);
 				}
 
 				try {
@@ -187,27 +190,33 @@ public class MobileServer {
 			}
 
 			if (mRequest != null && mRequest.getType() != null) {
-				// System.out.println("[MOBILE] Handling MobileRequest of type " + request.getType());
-				switch (mRequest.getType()) {
-				case LOCAL:
-					// return a list of nodes that are located within the same cell as the client
-					if (mRequest.getNode() != null) {
-						latitude = mRequest.getNode().getLatitude();
-						longitude = mRequest.getNode().getLongitude();
-						LinkedList<String> temp = index.getItems(index.getGridLocation(latitude, longitude));
-						for (String node: temp) {
-							if (activeNodes.contains(node))
-								result.add(node);
+				// System.out.println("[MOBILE] Handling MobileRequest of type " + mRequest.getType());
+				if (!activeNodes.isEmpty()) {
+					switch (mRequest.getType()) {
+					case LOCAL:
+						// return a list of nodes that are located within the same cell as the client
+						if (mRequest.getNode() != null) {
+							latitude = mRequest.getNode().getLatitude();
+							longitude = mRequest.getNode().getLongitude();
+							LinkedList<String> temp = index.getItems(index.getGridLocation(latitude, longitude));
+							for (String node: temp) {
+								if (activeNodes.contains(node))
+									result.add(node);
+							}
+							if (result.isEmpty()) {
+								Random rand = new Random();
+								result.add(activeNodes.get(rand.nextInt(activeNodes.size()-1)));
+							}
 						}
+						break;
+					case ALL:
+						// return all available nodes
+						result.addAll(activeNodes);
+						break;
+					default:
+						System.out.println("[MOBILE] Undefined request type: " + mRequest.getType());
+						result.add("Mobile Request Failed");
 					}
-					break;
-				case ALL:
-					// return all available nodes
-					result.addAll(activeNodes);
-					break;
-				default:
-					System.out.println("[MOBILE] Undefined request type: " + mRequest.getType());
-					result.add("Mobile Request Failed");
 				}
 			} else if (cRequest != null && cRequest.getRequestType() != null) {
 				// System.out.println("[MOBILE] Handling ComputeRequest of type " + cRequest.getRequestType());
@@ -223,7 +232,8 @@ public class MobileServer {
 							System.out.println("[MOBILE] No available nodes");
 							status = "Nodes not available";
 						} else {
-							status = sendRequestToNode(activeNodes.getFirst(), cRequest);
+							Random rand = new Random();
+							status = sendRequestToNode(activeNodes.get(rand.nextInt(activeNodes.size()-1)), cRequest);
 						}
 					} else if (activeNodes.contains(cRequest.getIp())) {
 						status = sendRequestToNode(cRequest.getIp(), cRequest);
@@ -255,7 +265,7 @@ public class MobileServer {
 				System.err.println("[MOBILE] Failed to close streams or socket: " + e);
 			}
 		}
-		
+
 		private static String sendRequestToNode(String nodeIp, ComputeRequest request) {
 			PrintWriter out = null;
 			BufferedReader in = null;
@@ -278,6 +288,6 @@ public class MobileServer {
 			}
 			return result;
 		}
-		
+
 	}
 }

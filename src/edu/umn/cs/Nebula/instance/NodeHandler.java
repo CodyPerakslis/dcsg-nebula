@@ -105,7 +105,7 @@ public class NodeHandler {
 					}
 				}
 				removedNodes.clear();
-				System.out.println("[NODE_HANDLER] " + nodeType + " nodes: " + nodes.keySet());
+				// System.out.println("[NODE_HANDLER] " + nodeType + " nodes: " + nodes.keySet());
 				try {
 					Thread.sleep(updateInterval);
 				} catch (InterruptedException e) {

@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -14,21 +15,42 @@ import com.google.gson.Gson;
 
 import edu.umn.cs.Nebula.model.JobType;
 import edu.umn.cs.Nebula.model.NodeType;
+import edu.umn.cs.Nebula.model.Resources;
 import edu.umn.cs.Nebula.request.ComputeRequest;
 import edu.umn.cs.Nebula.request.ComputeRequestType;
 
 public class ComputeNode extends Node {
+	private static final Gson gson = new Gson();
 	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
 	// private static final String nebulaUrl = "http://localhost:13993/NebulaCentral/NodeHandler";
+	private static final int requestPort = 6425; 
+	
+	private static Resources resourceInfo;
+	private static HashMap<String, Process> runningJobs;
+	private static String fileDirectory;
+	private static String appDirectory;
 
-	private static Gson gson = new Gson();
-
-	public static void main(String args[]) throws InterruptedException {
-		int requestPort = 6425;
+	public static void main(String args[]) throws InterruptedException {		
+		runningJobs = new HashMap<String, Process>();
+		if (args.length < 2) {
+			System.out.println("Usage: file-path, app-path");
+			return;
+		}
+		fileDirectory = args[0];
+		appDirectory = args[1];
+		
+		resourceInfo = new Resources();
+		//System.out.println("Resources:\n" + resourceInfo.getResourcesInfo());
+		// Connect to Nebula Central
 		connect(nebulaUrl, NodeType.COMPUTE);
 		if (!isReady()) return;
 
-		startListeningForTasks(1, requestPort);
+		// Connect to Mobile Server
+		waitForTasks(1, requestPort);
+	}
+	
+	public static Resources getResourceInfo() {
+		return resourceInfo;
 	}
 	
 	/**
@@ -51,25 +73,25 @@ public class ComputeNode extends Node {
 	}
 
 	/**
-	 * Here, the compute node is performing as a client-server that listens to end users on a specific port.
+	 * Listening for task on @port
 	 */
-	protected static void startListeningForTasks(int poolSize, int port) {
+	protected static void waitForTasks(int poolSize, int port) {
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
 
 		try {
 			serverSock = new ServerSocket(port);
-			System.out.println("[C-" + id + "] Listening for client requests on port " + port);
+			System.out.println("[C-" + id + "] Waiting for tasks on port " + port);
 			while (true) { // listen for client requests
 				requestPool.submit(new RequestHandler(serverSock.accept()));
 			}
 		} catch (IOException e) {
-			System.err.println("[C-" + id + "] Failed listening: " + e);
+			System.err.println("[C-" + id + "] Failed waiting for tasks: " + e);
 		}
 	}
 
 	/**
-	 * This thread is invoked when the node receives a request.
+	 * This thread is invoked when the node receives a task request.
 	 * Handle the request depending on the type of the task.
 	 */
 	protected static class RequestHandler implements Runnable {
@@ -98,6 +120,18 @@ public class ComputeNode extends Node {
 				case PING:
 					ComputeRequest reply = new ComputeRequest(ip, JobType.MOBILE, ComputeRequestType.PING);
 					pw.println(gson.toJson(reply));
+					pw.flush();
+					break;
+				case COMPUTE:
+					// TODO handle MapReduce type of jobs
+					boolean success = false;
+					switch(request.getJobType()) {
+						case MAP:
+						case REDUCE:
+						default:
+							System.out.println("[C-" + id + "] Undefined job type: " + request.getJobType());
+					}
+					pw.println(gson.toJson("Compute Status success: " + success));
 					pw.flush();
 					break;
 				default:

@@ -10,10 +10,13 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.HttpURLConnection;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -27,12 +30,12 @@ import edu.umn.cs.Nebula.request.ComputeRequestType;
 public class MobileNode extends ComputeNode {
 	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
 	private static final String mobileServerUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/MobileHandler";
-	private static final String fileDirectory = "/home/nebula/Nebula/Mobile/";
-	private static final String appDirectory = "/home/nebula/Nebula/Mobile/";
 	private static final Gson gson = new Gson();
 
 	private static ArrayList<String> neighbors = new ArrayList<String>();
 	private static HashMap<String, Process> runningApps;
+	private static String fileDirectory;
+	private static String appDirectory;
 
 	/**
 	 * A thread class that periodically send a heartbeat to the Mobile Server.
@@ -109,6 +112,13 @@ public class MobileNode extends ComputeNode {
 		int requestPort = 6425;
 		runningApps = new HashMap<String, Process>();
 
+		if (args.length < 2) {
+			System.out.println("Usage: file-path, app-path");
+			return;
+		}
+		fileDirectory = args[0];
+		appDirectory = args[1];
+		
 		// Connect to Nebula Central
 		connect(nebulaUrl, NodeType.COMPUTE);
 		if (!isReady()) return;
@@ -117,9 +127,27 @@ public class MobileNode extends ComputeNode {
 		Thread mobileThread = new Thread(new MobileServerThread(mobileServerUrl));
 		mobileThread.start();
 
-		startListeningForTasks(poolSize, requestPort);
+		waitForTasks(poolSize, requestPort);
 	}
 
+	/**
+	 * Here, the compute node is performing as a client-server that listens to end users on a specific port.
+	 */
+	protected static void waitForTasks(int poolSize, int port) {
+		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
+		ServerSocket serverSock = null;
+
+		try {
+			serverSock = new ServerSocket(port);
+			System.out.println("[M-" + id + "] Listening for client requests on port " + port);
+			while (true) { // listen for client requests
+				requestPool.submit(new RequestHandler(serverSock.accept()));
+			}
+		} catch (IOException e) {
+			System.err.println("[M-" + id + "] Failed listening: " + e);
+		}
+	}
+	
 	/**
 	 * This thread is invoked when the node receives a request. 
 	 * Handle the request depending on the type of the task.
@@ -143,7 +171,7 @@ public class MobileNode extends ComputeNode {
 		 * @param size
 		 * @return
 		 */
-		private boolean downloadFile(String filename, int size) {
+		private boolean downloadFile(String filename, long size) {
 			InputStream in = null;
 			FileOutputStream out = null;
 			byte[] buffer = new byte[bufferSize];
@@ -151,8 +179,10 @@ public class MobileNode extends ComputeNode {
 			boolean success = false;
 			String path;
 
-			if (filename == null || filename.isEmpty() || size < 0)
+			if (filename == null || filename.isEmpty() || size < 0) {
+				System.out.println("[M-" + id + "] Failed downloading file <" + filename + ", " + size + ">");
 				return false;
+			}
 
 			path = fileDirectory + filename;
 			File file = new File(path);
@@ -171,7 +201,6 @@ public class MobileNode extends ComputeNode {
 			try {
 				while (totalRead < size && (bytesRead = in.read(buffer)) > 0) {
 					totalRead += bytesRead;
-					// System.out.println("[M-" + id + "] Download: " + totalRead + "/" + size);
 					out.write(buffer, 0, bytesRead);
 				}
 				out.flush();
@@ -273,8 +302,7 @@ public class MobileNode extends ComputeNode {
 				return;
 			}
 
-			System.out.println("[M-" + id + "] Received a " + request.getRequestType() + " request");
-
+			// System.out.println("[M-" + id + "] Received a " + request.getRequestType() + " request");
 			switch (request.getRequestType()) {
 			case PING:
 				reply = new ComputeRequest(ip, JobType.MOBILE, ComputeRequestType.PING);
@@ -285,30 +313,32 @@ public class MobileNode extends ComputeNode {
 				pw.println(gson.toJson(reply));
 				break;
 			case UPLOAD:
-				if (request.getContents() == null || request.getContents().size() == 0) {
+				if (request.getContents() == null || request.getContents().isEmpty()) {
+					System.out.println("[M-" + id + "] Failed UPLOAD request: no contents found in the request");
 					pw.println("Failed");
 				} else {
 					String filename = request.getContents().get(0);
-					int filesize = Integer.parseInt(request.getContents().get(1));
+					long filesize = Long.parseLong(request.getContents().get(1));
 					if (downloadFile(filename, filesize)) {
-						System.out.println("[M-" + id + "] File upload: COMPLETE");
+						System.out.println("[M-" + id + "] Downloading " + filename + ": COMPLETE");
 						pw.println("Complete");
 					} else {
-						System.out.println("[M-" + id + "] File upload: FAILED");
+						System.out.println("[M-" + id + "] Downloading " + filename + ": FAILED");
 						pw.println("Failed");
 					}
 				}
 				break;
 			case DOWNLOAD:
-				if (request.getContents() == null || request.getContents().size() == 0) {
+				if (request.getContents() == null || request.getContents().isEmpty()) {
+					System.out.println("[M-" + id + "] Failed DOWNLOAD request: no contents found in the request");
 					pw.println("Failed");
 				} else {
 					String filename = request.getContents().get(0);
 					if (sendFile(filename)) {
-						System.out.println("[M-" + id + "] File download: COMPLETE");
+						System.out.println("[M-" + id + "] Uploading " + filename + ": COMPLETE");
 						pw.println("Complete");
 					} else {
-						System.out.println("[M-" + id + "] File download: FAILED");
+						System.out.println("[M-" + id + "] Uploading " + filename + ": FAILED");
 						pw.println("Failed");
 					}
 				}	
@@ -354,17 +384,11 @@ public class MobileNode extends ComputeNode {
 					pw.println("No such process available");
 				}
 				break;
-			case COMPUTE:
+			case APP_GET:
 				appName = request.getContents().get(0);
-				if (appName == null || request.getJobType() == null || !runningApps.containsKey(appName)) {
+				if (appName == null || request.getJobType() == null || (child = runningApps.get(appName)) == null) {
 					System.out.println("[M-" + id + "] Invalid job / application");
 					pw.println("Invalid job / application");
-					break;
-				}
-				child = runningApps.get(appName);
-				if (child == null) {
-					System.out.println("[M-" + id + "] No such process: " + appName);
-					pw.println("No such process available");
 					break;
 				}
 				if (request.getContents().size() > 1 && request.getContents().get(1) != null) {
@@ -378,17 +402,11 @@ public class MobileNode extends ComputeNode {
 					pw.println("No content available");
 				}
 				break;
-			case COMPUTEWAIT:
+			case APP_SEND:
 				appName = request.getContents().get(0);
-				if (appName == null || request.getJobType() == null || !runningApps.containsKey(appName)) {
+				if (appName == null || request.getJobType() == null || (child = runningApps.get(appName)) == null) {
 					System.out.println("[M-" + id + "] Invalid job / application");
 					pw.println("Invalid job / application");
-					break;
-				}
-				child = runningApps.get(appName);
-				if (child == null) {
-					System.out.println("[M-" + id + "] No such process: " + appName);
-					pw.println("No such process available");
 					break;
 				}
 				if (request.getContents().size() > 1 && request.getContents().get(1) != null) {
@@ -417,6 +435,7 @@ public class MobileNode extends ComputeNode {
 				}
 				break;
 			default:
+				System.out.println("[M-" + id + "] Invalid request: " + request.getRequestType());
 				pw.println("Invalid request");
 				break;
 			}
