@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
-import edu.umn.cs.Nebula.model.Lease;
+import edu.umn.cs.Nebula.schedule.Lease;
 
 
 public class SchedulerRequest {

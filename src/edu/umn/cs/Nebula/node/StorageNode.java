@@ -17,57 +17,78 @@ import java.nio.file.Files;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.google.gson.Gson;
-
-import edu.umn.cs.Nebula.model.LRUCache;
-import edu.umn.cs.Nebula.model.NodeType;
 import edu.umn.cs.Nebula.request.DSSRequest;
 import edu.umn.cs.Nebula.request.DSSRequestType;
+import edu.umn.cs.Nebula.util.LRUCache;
 
 public class StorageNode extends Node {
-	private static final int poolSize = 10;
+	/* Connection configuration */
+	private static final String dssMasterServer = "134.84.121.87";
+	private static final int dssMasterPort = 6413;
 	private static final int requestPort = 2021;
 	private static final int fileTransferPort = 2022;
 	private static final int maxTrial = 5;
-	private static final String fileDirectory = "~/Nebula/DSS";
+	
+	/* File/storage configuration */
+	private static String fileDirectory = "/home/umn_nebula/albert/";
 	private static final int bufferSize = 1024 * 64;
 	private static final int timeout = 5000;
-
-	private static final String dssMasterServer = "134.84.121.87";
-	private static final int dssMasterPort = 6423;
-	private static final String nebulaUrl = "http://hemant-umh.cs.umn.edu:6420/NebulaCentral/NodeHandler";
-
 	private static LRUCache<String> cache;
-	private static final int cacheSize = 20;
-	private static final Gson gson = new Gson();
-
-	public static void main(String args[]) {
-		connect(nebulaUrl, NodeType.STORAGE);
-		cache = new LRUCache<String>(cacheSize);
-
-		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
-		ServerSocket serverSock = null;
-
-		try {
-			serverSock = new ServerSocket(requestPort);
-			System.out.println("[DSS] Listening for client requests on port " + requestPort);
-			while (true) {
-				requestPool.submit(new DSSHandlerThread(serverSock.accept()));
-			}
-		} catch (IOException e) {
-			System.err.println("[DSS] Failed to establish listening socket: " + e);
-		} finally {
-			requestPool.shutdown();
-			if (serverSock != null) {
-				try {
-					serverSock.close();
-				} catch (IOException e) {
-					System.err.println("[DSS] Failed to close listening socket");
-				}
-			}
+	
+	private static final boolean DEBUG = true;
+	
+	/**
+	 * =========================================================================
+	 */
+	
+	public static void main(String args[]) throws IOException {	
+		if (args.length > 0) {
+			fileDirectory = args[0];
 		}
+		nodeInfo.setNodeType(NodeType.STORAGE);
+		getNodeInformation();
+		
+		// Connect to the DSS Master
+		Thread ping = new Thread(new Ping(dssMasterServer, dssMasterPort));
+		ping.start();
+		
+		cache = new LRUCache<String>(20);
+		
+		// Listen for tasks
+		int poolSize = 10;
+		listenForRequests(poolSize, requestPort);
 	}
 
+	/**
+	 * Listen for tasks from the Job Manager.
+	 * 
+	 * @throws IOException
+	 */
+	protected static void listenForRequests(int poolSize, int port) throws IOException {
+		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
+		ServerSocket serverSocket = null;
+
+		try {
+			serverSocket = new ServerSocket(port);
+			if (DEBUG)
+				System.out.println("[" + nodeInfo.getId() + "] Listening for client requests at port " + port);
+			while (true) { // listen for client requests
+				requestPool.submit(new DSSHandlerThread(serverSocket.accept()));
+			}
+		} catch (IOException e) {
+			System.err.println("[" + nodeInfo.getId() + "] Failed listening: " + e);
+		} finally {
+			requestPool.shutdown();
+			if (serverSocket != null)
+				serverSocket.close();
+		}
+	}
+	
+	/**
+	 * DSS REQUEST HANDLERS
+	 * =========================================================================
+	 */
+	
 	/**
 	 * Report to the Nebula DSS Master that the node stores a new file.
 	 * 
@@ -90,7 +111,7 @@ public class StorageNode extends Node {
 			// Send a NEW message to the DSS Master
 			System.out.println("[DSS] Reporting new file to the master.");
 			DSSRequest request = new DSSRequest(DSSRequestType.NEW, namespace, filename);
-			request.setNodeId(id);
+			request.setNodeId(nodeInfo.getId());
 			out.println(gson.toJson(request));
 			out.flush();
 

@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.model;
+package edu.umn.cs.Nebula.node;
 
 public class Resources {
 	private Runtime r = Runtime.getRuntime();

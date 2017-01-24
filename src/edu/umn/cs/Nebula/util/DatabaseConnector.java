@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.model;
+package edu.umn.cs.Nebula.util;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;

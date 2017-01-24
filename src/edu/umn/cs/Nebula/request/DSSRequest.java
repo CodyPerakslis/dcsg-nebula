@@ -5,8 +5,8 @@ public class DSSRequest {
 	private DSSRequestType type;
 	private String namespace;
 	private String filename;
-	private double latitude;
-	private double longitude;
+	private float latitude;
+	private float longitude;
 	private String note;
 	
 	public DSSRequest(DSSRequestType type) {
@@ -51,19 +51,19 @@ public class DSSRequest {
 		this.filename = filename;
 	}
 
-	public double getLatitude() {
+	public float getLatitude() {
 		return latitude;
 	}
 
-	public void setLatitude(double latitude) {
+	public void setLatitude(float latitude) {
 		this.latitude = latitude;
 	}
 
-	public double getLongitude() {
+	public float getLongitude() {
 		return longitude;
 	}
 
-	public void setLongitude(double longitude) {
+	public void setLongitude(float longitude) {
 		this.longitude = longitude;
 	}
 

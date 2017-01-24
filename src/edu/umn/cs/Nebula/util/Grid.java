@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.mobile;
+package edu.umn.cs.Nebula.util;
 
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -69,25 +69,83 @@ public class Grid {
 		return latitudeLocation + "_" + longitudeLocation;
 	}
 	
-	public boolean insertItem(String id, double latitude, double longitude) {
+	public boolean insertItem(String item, double latitude, double longitude) {
 		if (!validCoordinate(latitude, longitude))
 			return false;
 		
 		String gridIndex = getGridLocation(latitude, longitude);
-		return cells.get(gridIndex).addItem(id);
+		return cells.get(gridIndex).addItem(item);
 	}
 	
-	public boolean removeItem(String id, double latitude, double longitude) {
+	public boolean removeItem(String item, double latitude, double longitude) {
 		if (!validCoordinate(latitude, longitude))
 			return false;
 		
 		String gridIndex = getGridLocation(latitude, longitude);
-		return cells.get(gridIndex).removeItem(id);
+		return cells.get(gridIndex).removeItem(item);
 	}
 	
 	public LinkedList<String> getItems(String id) {
 		if (!cells.containsKey(id))
 			return new LinkedList<String>();
 		return cells.get(id).getAllItems();
+	}
+	
+	public void clearItems(String id) {
+		if (cells.containsKey(id))
+			cells.get(id).clearItems();
+	}
+	
+	public LinkedList<String> getNeighborItems(String id) {
+		LinkedList<String> items = new LinkedList<String>();
+		
+		int latitudeIdx = Integer.parseInt(id.split("_")[0]);
+		int longitudeIdx = Integer.parseInt(id.split("_")[1]);
+		
+		int minLatitude = latitudeIdx - 1;
+		int maxLatitude = latitudeIdx + 1;
+		int minLongitude = longitudeIdx - 1;
+		int maxLongitude = longitudeIdx + 1;
+		
+		// make sure the cells are all inside the boundary [0, k)
+		// add the three cells whose latitude index is the same as id's latitude
+		items.addAll(getItems(latitudeIdx + "_" + longitudeIdx));
+		if (minLongitude > 0) {
+			items.addAll(getItems(latitudeIdx + "_" + minLongitude));
+		}
+		if (maxLongitude < k) {
+			items.addAll(getItems(latitudeIdx + "_" + maxLongitude));
+		}
+		// add the three cells whose latitude index is 1 below the id's latitude
+		if (minLatitude > 0) {
+			if (minLongitude > 0) {
+				items.addAll(getItems(minLatitude + "_" + minLongitude));
+			}
+			items.addAll(getItems(minLatitude + "_" + longitudeIdx));
+			if (maxLongitude < k) {
+				items.addAll(getItems(minLatitude + "_" + maxLongitude));
+			}
+		}
+		// add the three cells whose latitude index is 1 above the id's latitude
+		if (maxLatitude < k) {
+			if (minLongitude > 0) {
+				items.addAll(getItems(maxLatitude + "_" + minLongitude));
+			}
+			items.addAll(getItems(maxLatitude + "_" + longitudeIdx));
+			if (maxLongitude < k) {
+				items.addAll(getItems(maxLatitude + "_" + maxLongitude));
+			}
+		}
+		return items;
+	}
+	
+	
+	
+	public String getAllItemsString() {
+		String result = "";
+		for (String id: cells.keySet()) {
+			result += id + ": " + cells.get(id).getAllItems() + "; ";
+		}
+		return result;
 	}
 }

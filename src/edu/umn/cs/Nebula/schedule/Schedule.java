@@ -1,8 +1,10 @@
-package edu.umn.cs.Nebula.model;
+package edu.umn.cs.Nebula.schedule;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Set;
+
+import edu.umn.cs.Nebula.job.Task;
 
 public class Schedule {
 	private HashMap<String, ArrayList<Task>> map;

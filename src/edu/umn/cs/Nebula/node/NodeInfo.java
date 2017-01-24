@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.model;
+package edu.umn.cs.Nebula.node;
 
 import java.io.Serializable;
 import java.util.LinkedList;
@@ -8,27 +8,32 @@ public class NodeInfo implements Serializable {
 	private int maxRecord = 10;
 	private String id;
 	private String ip;
-	private Coordinate coordinate;
+	private float latitude;
+	private float longitude;
 	private LinkedList<Double> bandwidth;
 	private LinkedList<Double> latency;
 	private NodeType nodeType;
 	private long lastOnline;
+	private Resources resources;
 	private String note;
 	
-	public NodeInfo(String id, String ip, double latitude, double longitude, NodeType nodeType) {
+	public NodeInfo(String id, String ip, float latitude, float longitude, NodeType nodeType) {
 		this.id = id;
 		this.ip = ip;
-		coordinate = new Coordinate(latitude, longitude);
+		this.latitude = latitude;
+		this.longitude = longitude;
 		this.nodeType = nodeType;
 		this.lastOnline = System.currentTimeMillis();
 		this.bandwidth = new LinkedList<Double>();
 		this.latency = new LinkedList<Double>();
+		this.setResources(new Resources());
 	}
 	
-	public NodeInfo(String id, String ip, double latitude, double longitude, NodeType nodeType, double bw, double lt) {
+	public NodeInfo(String id, String ip, float latitude, float longitude, NodeType nodeType, double bw, double lt) {
 		this.id = id;
 		this.ip = ip;
-		coordinate = new Coordinate(latitude, longitude);
+		this.latitude = latitude;
+		this.longitude = longitude;
 		this.nodeType = nodeType;
 		this.lastOnline = System.currentTimeMillis();
 		this.bandwidth = new LinkedList<Double>();
@@ -66,24 +71,20 @@ public class NodeInfo implements Serializable {
 		return ip;
 	}
 	
-	public void setLatitude(double latitude) {
-		coordinate.setLatitude(latitude);
+	public void setLatitude(float latitude) {
+		this.latitude = latitude;
 	}
 	
-	public double getLatitude() {
-		return coordinate.getLatitude();
+	public float getLatitude() {
+		return latitude;
 	}
 	
-	public void setLongitude(double longitude) {
-		coordinate.setLongitude(longitude);
+	public void setLongitude(float longitude) {
+		this.longitude = longitude;
 	}
 	
-	public double getLongitude() {
-		return coordinate.getLongitude();
-	}
-	
-	public Coordinate getCoordinate() {
-		return coordinate;
+	public float getLongitude() {
+		return longitude;
 	}
 	
 	public void addBandwidth(double bandwidth) {
@@ -156,5 +157,13 @@ public class NodeInfo implements Serializable {
 
 	public void setNote(String note) {
 		this.note = note;
+	}
+
+	public Resources getResources() {
+		return resources;
+	}
+
+	public void setResources(Resources resources) {
+		this.resources = resources;
 	}
 }

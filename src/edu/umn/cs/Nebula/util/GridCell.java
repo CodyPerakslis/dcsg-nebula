@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.mobile;
+package edu.umn.cs.Nebula.util;
 
 import java.util.LinkedList;
 

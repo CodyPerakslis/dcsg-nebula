@@ -15,16 +15,16 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.Nebula.model.Application;
-import edu.umn.cs.Nebula.model.ApplicationType;
-import edu.umn.cs.Nebula.model.DatabaseConnector;
-import edu.umn.cs.Nebula.model.Job;
-import edu.umn.cs.Nebula.model.JobType;
-import edu.umn.cs.Nebula.model.Schedule;
-import edu.umn.cs.Nebula.model.Task;
+import edu.umn.cs.Nebula.job.Application;
+import edu.umn.cs.Nebula.job.ApplicationType;
+import edu.umn.cs.Nebula.job.Job;
+import edu.umn.cs.Nebula.job.JobType;
+import edu.umn.cs.Nebula.job.Task;
 import edu.umn.cs.Nebula.request.ApplicationRequest;
 import edu.umn.cs.Nebula.request.ScheduleRequest;
 import edu.umn.cs.Nebula.request.TaskRequest;
+import edu.umn.cs.Nebula.schedule.Schedule;
+import edu.umn.cs.Nebula.util.DatabaseConnector;
 
 public class ApplicationManager {
 	// database configuration

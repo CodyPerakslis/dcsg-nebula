@@ -12,10 +12,10 @@ import java.util.concurrent.Executors;
 
 import com.google.gson.Gson;
 
-import edu.umn.cs.Nebula.model.Lease;
-import edu.umn.cs.Nebula.model.NodeInfo;
-import edu.umn.cs.Nebula.model.NodeType;
+import edu.umn.cs.Nebula.node.NodeInfo;
+import edu.umn.cs.Nebula.node.NodeType;
 import edu.umn.cs.Nebula.request.SchedulerRequest;
+import edu.umn.cs.Nebula.schedule.Lease;
 
 /**
  * Nebula Resource Manager.
@@ -24,26 +24,49 @@ import edu.umn.cs.Nebula.request.SchedulerRequest;
  *
  */
 public class ResourceManager {
-	private static final int schedulerPort = 6424;
+	private static final int schedulerPort = 6414;
 	private static final int poolSize = 10;
 	private static final Gson gson = new Gson();
 
 	private static HashMap<String, Lease> busyNodes = new HashMap<String, Lease>();
-	private static NodeHandler nodeHandler;
+	
+	private static NodeManager nodeManager;
+	
+	private static final boolean DEBUG = true;
 
+	/** 
+	 * INITIALIZATION 
+	 * ======================================================================================================== */
+	
 	public static void main(String[] args) {
-		if (args.length < 4) {
-			nodeHandler = new NodeHandler(6422, NodeType.COMPUTE, 5000, 50);
-			nodeHandler.connectDB("nebula", "kvm", "localhost", "nebula", 3306); // set to 3306 in hemant, 3307 in local
-		} else if (args.length == 4){
-			nodeHandler = new NodeHandler(Integer.parseInt(args[0]), NodeType.valueOf(args[1]),
-					Integer.parseInt(args[2]), Integer.parseInt(args[3]));
-		} else if (args.length == 9) {
-			nodeHandler = new NodeHandler(Integer.parseInt(args[0]), NodeType.valueOf(args[1]),
-					Integer.parseInt(args[2]), Integer.parseInt(args[3]));
-			nodeHandler.connectDB(args[4], args[5], args[6], args[7], Integer.parseInt(args[8]));
+		int nodeManagerPort = 6422;
+		int nodeManagerMaxInactive = 5000;
+		int nodeManagerPoolSize = 50;
+		String nodeDatabaseUsername = "nebula";
+		String nodeDatabasePassword = "kvm";
+		String nodeDatabaseServerName = "localhost";
+		String nodeDatabaseName = "nebula";
+		int nodeDatabasePort = 3306; // 3306 in hemant, 3307 in local
+
+		if (args.length == 3) {
+			nodeManagerPort = Integer.parseInt(args[0]);
+			nodeManagerMaxInactive = Integer.parseInt(args[1]);
+			nodeManagerPoolSize = Integer.parseInt(args[2]);
+		} else if (args.length == 8) {
+			nodeManagerPort = Integer.parseInt(args[0]);
+			nodeManagerMaxInactive = Integer.parseInt(args[1]);
+			nodeManagerPoolSize = Integer.parseInt(args[2]);
+			nodeDatabaseUsername = args[3];
+			nodeDatabasePassword = args[4];
+			nodeDatabaseServerName = args[5];
+			nodeDatabaseName = args[6];
+			nodeDatabasePort = Integer.parseInt(args[7]);
 		}
-		nodeHandler.start();
+
+		nodeManager = new NodeManager(nodeManagerPort, nodeManagerMaxInactive, nodeManagerPoolSize, NodeType.COMPUTE);
+		nodeManager.connectDB(nodeDatabaseUsername, nodeDatabasePassword, nodeDatabaseServerName, nodeDatabaseName,
+				nodeDatabasePort);
+		nodeManager.run();
 
 		start();
 	}
@@ -52,7 +75,7 @@ public class ResourceManager {
 	 * Start listening to scheduler requests on port @schedulerPort.
 	 */
 	private static void start() {
-		// Listening for client requests
+		// listening for client requests
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
 		try {
@@ -75,6 +98,10 @@ public class ResourceManager {
 		}
 	}
 
+	/** 
+	 * SUBCLASSES
+	 * ======================================================================================================== */
+	
 	/**
 	 * Scheduler handler class which communicates with a scheduler for leasing and acquiring nodes.
 	 * 
@@ -98,7 +125,7 @@ public class ResourceManager {
 
 				request = gson.fromJson(in.readLine(), SchedulerRequest.class);
 			} catch (IOException e) {
-				System.out.println("[RM] Failed parsing scheduler request: " + e.getMessage());
+				if (DEBUG) System.out.println("[RM] Failed parsing scheduler request: " + e.getMessage());
 				if (out != null) {
 					out.println(gson.toJson(false));
 					out.flush();
@@ -108,20 +135,20 @@ public class ResourceManager {
 			}
 
 			if (request == null) {
-				System.out.println("[RM] Scheduler request not found.");
+				if (DEBUG) System.out.println("[RM] Scheduler request not found.");
 				out.println(gson.toJson(null));
 			} else {
-				// System.out.println("[RM] Receive a " + request.getType() + " request from " + request.getSchedulerName());
+				if (DEBUG) System.out.println("[RM] Receive a " + request.getType() + " request from " + request.getSchedulerName());
 
 				switch(request.getType()) {
-				case GET:
+				case GETNODES:
 					// return the status of all nodes, including the ones that are busy
 					HashMap<String, NodeInfo> reply = new HashMap<String, NodeInfo>();
 					NodeInfo nodeInfo;
-					synchronized (nodeHandler.nodesLock) {
-						for (String nodeId: nodeHandler.nodes.keySet()) {
-							nodeInfo = nodeHandler.nodes.get(nodeId);
-							// Add the remaining time to expire
+					synchronized (nodeManager.nodesLock) {
+						for (String nodeId: nodeManager.getNodes().keySet()) {
+							nodeInfo = nodeManager.getNodes().get(nodeId);
+							// add the remaining time to expire
 							if (busyNodes.containsKey(nodeId)) {
 								nodeInfo.setNote("" + busyNodes.get(nodeId).getRemainingTime());
 							} else {
@@ -134,7 +161,7 @@ public class ResourceManager {
 					break;
 				case LEASE:
 					HashMap<String, Lease> successfullyLeasedNodes = handleLease(request);
-					System.out.println("[RM] Leased: " + successfullyLeasedNodes.keySet() + " by " + request.getSchedulerName());
+					if (DEBUG) System.out.println("[RM] Leased: " + successfullyLeasedNodes.keySet() + " by " + request.getSchedulerName());
 					out.println(gson.toJson(successfullyLeasedNodes));
 					break;
 				case RELEASE:
@@ -142,7 +169,7 @@ public class ResourceManager {
 					out.println(gson.toJson(releaseSuccess));
 					break;
 				default:
-					System.out.println("[RM] Invalid request: " + request.getType());
+					if (DEBUG) System.out.println("[RM] Invalid request: " + request.getType());
 					out.println(gson.toJson(false));
 				}
 			}
@@ -153,11 +180,15 @@ public class ResourceManager {
 				if (out != null) out.close();
 				socket.close();
 			} catch (IOException e) {
-				System.out.println("[RM] Failed closing streams/socket.");
+				System.err.println("[RM] Failed closing streams/socket.");
 			}
 		}
 	}
 
+	/** 
+	 * HANDLER METHODS
+	 * ======================================================================================================== */
+	
 	/**
 	 * Lease request from a scheduler on one or more nodes.
 	 * 
@@ -168,26 +199,26 @@ public class ResourceManager {
 	private static HashMap<String, Lease> handleLease(SchedulerRequest leaseRequest) {
 		HashMap<String, Lease> successfullyLeasedNodes = new HashMap<String, Lease>();
 
-		synchronized (nodeHandler.nodesLock) {
+		synchronized (nodeManager.nodesLock) {
 			for (String nodeId: leaseRequest.getLeaseNodes()) {
-				if (nodeHandler.nodes.get(nodeId) == null) {
-					// The node is not available
-					System.out.println("[RM] " + nodeId + " is not available."); 
+				if (nodeManager.getNodes().get(nodeId) == null) {
+					// the node is not available
+					if (DEBUG) System.out.println("[RM] " + nodeId + " is not available."); 
 					continue;
 				}
 
 				if (busyNodes.containsKey(nodeId)) {
 					if (busyNodes.get(nodeId).getScheduler() != null && 
 							!busyNodes.get(nodeId).getScheduler().equals(leaseRequest.getSchedulerName())) {
-						// Do not let a scheduler acquire a node that has already been claimed by another scheduler
-						System.out.println("[RM] " + nodeId + " is busy."); 
+						// do not let a scheduler acquire a node that has already been claimed by another scheduler
+						if (DEBUG) System.out.println("[RM] " + nodeId + " is busy."); 
 						continue;
 					}
 				}
 
 				// TODO add more conditions/constraints such as lease time limit etc.
 
-				// Success. Create a new lease
+				// success. create a new lease
 				busyNodes.put(nodeId, leaseRequest.getLease(nodeId));
 				successfullyLeasedNodes.put(nodeId, leaseRequest.getLease(nodeId));
 			}
@@ -202,14 +233,14 @@ public class ResourceManager {
 	 * @param nodeIds
 	 */
 	private static boolean handleRelease(SchedulerRequest leaseRequest) {
-		synchronized (nodeHandler.nodesLock) {
+		synchronized (nodeManager.nodesLock) {
 			for (String nodeId: leaseRequest.getNodes()) {
-				if (nodeHandler.nodes.get(nodeId) == null || busyNodes.get(nodeId) == null) {
+				if (nodeManager.getNodes().get(nodeId) == null || busyNodes.get(nodeId) == null) {
 					continue;
 				}
 				if (busyNodes.get(nodeId).getScheduler() != null && 
 						busyNodes.get(nodeId).getScheduler().equals(leaseRequest.getSchedulerName())) {
-					// Free the node only if it is currently owned by the scheduler
+					// free the node only if it is currently owned by the scheduler
 					busyNodes.remove(nodeId);
 				}
 			}

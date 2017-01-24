@@ -1,51 +1,53 @@
 package edu.umn.cs.Nebula.request;
 
+import java.util.LinkedHashMap;
+
+import edu.umn.cs.Nebula.job.RunningTask;
+import edu.umn.cs.Nebula.job.TaskInfo;
+
 public class TaskRequest {
-	private String nodeId;
-	private int taskId;
-	private TaskRequestType requestType;
-	private String status;
+	private RunningTask task;
+	private TaskRequestType type;
+	private LinkedHashMap<String, TaskInfo> taskStatuses;
 	
-	public TaskRequest(TaskRequestType type, String nodeId) {
-		this.requestType = type;
-		this.nodeId = nodeId;
+	public TaskRequest(RunningTask task, TaskRequestType type) {
+		setTask(task);
+		setType(type);
+		this.setTaskStatuses(new LinkedHashMap<String, TaskInfo>());
 	}
 	
-	public TaskRequest(TaskRequestType type, String nodeId, int taskId) {
-		this.requestType = type;
-		this.nodeId = nodeId;
-		this.taskId = taskId;
+	public TaskRequest(TaskRequestType type) {
+		setTask(null);
+		setType(type);
+		this.setTaskStatuses(new LinkedHashMap<String, TaskInfo>());
 	}
-
-	public String getNodeId() {
-		return nodeId;
+	
+	public RunningTask getTask() {
+		return task;
 	}
-
-	public void setNodeId(String nodeId) {
-		this.nodeId = nodeId;
-	}
-
-	public int getTaskId() {
-		return taskId;
-	}
-
-	public void setTaskId(int taskId) {
-		this.taskId = taskId;
+	
+	public void setTask(RunningTask task) {
+		this.task = task;
 	}
 
 	public TaskRequestType getType() {
-		return requestType;
+		return type;
 	}
 
-	public void setType(TaskRequestType requestType) {
-		this.requestType = requestType;
+	public void setType(TaskRequestType type) {
+		this.type = type;
 	}
 
-	public String getStatus() {
-		return status;
+	public LinkedHashMap<String, TaskInfo> getTaskStatuses() {
+		return taskStatuses;
 	}
 
-	public void setStatus(String status) {
-		this.status = status;
+	public void setTaskStatuses(LinkedHashMap<String, TaskInfo> taskStatuses) {
+		this.taskStatuses = taskStatuses;
 	}
+	
+	public void addTaskInfo(String processId, TaskInfo info) {
+		taskStatuses.put(processId, info);
+	}
+
 }

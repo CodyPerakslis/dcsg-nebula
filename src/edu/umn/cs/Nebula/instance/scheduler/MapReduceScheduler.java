@@ -1,11 +1,11 @@
-package edu.umn.cs.Nebula.scheduler;
+package edu.umn.cs.Nebula.instance.scheduler;
 
 import java.util.HashMap;
 
-import edu.umn.cs.Nebula.model.ApplicationType;
-import edu.umn.cs.Nebula.model.Job;
-import edu.umn.cs.Nebula.model.Lease;
-import edu.umn.cs.Nebula.model.Task;
+import edu.umn.cs.Nebula.job.ApplicationType;
+import edu.umn.cs.Nebula.job.Job;
+import edu.umn.cs.Nebula.job.Task;
+import edu.umn.cs.Nebula.schedule.Lease;
 
 public class MapReduceScheduler extends Scheduler {
 	private static final long sleepTime = 5000; // in milliseconds
@@ -25,8 +25,8 @@ public class MapReduceScheduler extends Scheduler {
 		
 		for (Integer taskId: tasks.keySet()) {
 			// Randomly select nodes and lease for 1 minute
-			for (String nodeId: nodeStatus.keySet()) {
-				if (!nodeStatus.get(nodeId).getNote().equals("0") ||
+			for (String nodeId: onlineNodes.keySet()) {
+				if (!onlineNodes.get(nodeId).getNote().equals("0") ||
 						temporaryNodeTaskMapping.containsKey(nodeId)) {
 					continue;
 				}
@@ -64,7 +64,7 @@ public class MapReduceScheduler extends Scheduler {
 			}
 			
 			// get a list of currently active nodes
-			if (!getNodes() || nodeStatus == null || nodeStatus.isEmpty()) {
+			if (!updateOnlineNodes() || onlineNodes == null || onlineNodes.isEmpty()) {
 				System.out.println("[" + name + "] Not nodes found.");
 				Thread.sleep(sleepTime);
 				continue;
@@ -76,7 +76,7 @@ public class MapReduceScheduler extends Scheduler {
 			System.out.println("[" + name + "] Selecting nodes for scheduling.");
 			job = jobQueue.peek();
 			for (int taskId: job.getTasks().keySet()) {
-				if (scheduledTasks.containsKey(taskId) || tasksToBeScheduled.containsKey(taskId)) {
+				if (runningTasks.containsKey(taskId) || tasksToBeScheduled.containsKey(taskId)) {
 					continue;
 				}
 				tasksToBeScheduled.put(taskId, job.getTask(taskId));
@@ -97,21 +97,21 @@ public class MapReduceScheduler extends Scheduler {
 			}
 			
 			for (String nodeId: temporaryNodeTaskMapping.keySet()) {
-				if (leasedNodes.containsKey(nodeId)) {
+				if (leases.containsKey(nodeId)) {
 					// if we have successfully lease the node, we can assign a task to it
 					task = temporaryNodeTaskMapping.get(nodeId);
-					scheduledNodes.put(nodeId, task);
+					usedNodes.put(nodeId, task);
 				} else {
 					temporaryNodeTaskMapping.remove(nodeId);
 					System.out.println("[" + name + "] Failed leasing node: " + nodeId);
 				}
 			}
-			if (assignTasks(scheduledNodes)) {
+			if (assignTasksToNodes(usedNodes)) {
 				System.out.println("[" + name + "] Tasks have been successfully scheduled.");
 				for (Task assignedTask: temporaryNodeTaskMapping.values()) {
 					tasksToBeScheduled.remove(assignedTask);
 				}
-				for (String nodeId: scheduledNodes.keySet()) {
+				for (String nodeId: usedNodes.keySet()) {
 					temporaryNodeTaskMapping.remove(nodeId);
 				}
 			} else {

@@ -11,46 +11,71 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import redis.clients.jedis.Jedis;
+
 import com.google.gson.Gson;
 
-import edu.umn.cs.Nebula.model.NodeInfo;
-import edu.umn.cs.Nebula.model.NodeType;
+import edu.umn.cs.Nebula.node.NodeInfo;
+import edu.umn.cs.Nebula.node.NodeType;
 import edu.umn.cs.Nebula.request.DSSRequest;
-import redis.clients.jedis.Jedis;
 
 public class DSSMaster {
 	private static final int dssPort = 6427;
 	private static final int poolSize = 20;
+	
 	private static final String jedisServer = "localhost";
 	private static final int jedisPort = 6379;
 	private static final Jedis jedis = new Jedis(jedisServer, jedisPort);
 	private static final Gson gson = new Gson();
 
-	private static NodeHandler nodeHandler;
+	private static NodeManager nodeManager;
+	
+	/** 
+	 * INITIALIZATION
+	 * ======================================================================================================== */
 
 	public static void main(String args[]) {
-		if (args.length < 4) {
-			nodeHandler = new NodeHandler(6423, NodeType.STORAGE, 5000, 50);
-			nodeHandler.connectDB("nebula", "kvm", "localhost", "nebula", 3306); // set to 3306 in hemant, 3307 in local
-		} else if (args.length == 4){
-			nodeHandler = new NodeHandler(Integer.parseInt(args[0]), NodeType.valueOf(args[1]),
-					Integer.parseInt(args[2]), Integer.parseInt(args[3]));
-		} else if (args.length == 9) {
-			nodeHandler = new NodeHandler(Integer.parseInt(args[0]), NodeType.valueOf(args[1]),
-					Integer.parseInt(args[2]), Integer.parseInt(args[3]));
-			nodeHandler.connectDB(args[4], args[5], args[6], args[7], Integer.parseInt(args[8]));
-		}
-		nodeHandler.start();
+		int nodeManagerPort = 6423;
+		int nodeManagerMaxInactive = 5000;
+		int nodeManagerPoolSize = 50;
+		String nodeDatabaseUsername = "nebula";
+		String nodeDatabasePassword = "kvm";
+		String nodeDatabaseServerName = "localhost";
+		String nodeDatabaseName = "nebula";
+		int nodeDatabasePort = 3306; // 3306 in hemant, 3307 in local
 
+		if (args.length == 3) {
+			nodeManagerPort = Integer.parseInt(args[0]);
+			nodeManagerMaxInactive = Integer.parseInt(args[1]);
+			nodeManagerPoolSize = Integer.parseInt(args[2]);
+		} else if (args.length == 8) {
+			nodeManagerPort = Integer.parseInt(args[0]);
+			nodeManagerMaxInactive = Integer.parseInt(args[1]);
+			nodeManagerPoolSize = Integer.parseInt(args[2]);
+			nodeDatabaseUsername = args[3];
+			nodeDatabasePassword = args[4];
+			nodeDatabaseServerName = args[5];
+			nodeDatabaseName = args[6];
+			nodeDatabasePort = Integer.parseInt(args[7]);
+		}
+
+		nodeManager = new NodeManager(nodeManagerPort, nodeManagerMaxInactive, nodeManagerPoolSize, NodeType.STORAGE);
+		nodeManager.connectDB(nodeDatabaseUsername, nodeDatabasePassword, nodeDatabaseServerName, nodeDatabaseName,
+				nodeDatabasePort);
+		nodeManager.run();
+
+		// connect to redis
 		System.out.print("[DSSMASTER] Initizalizing Redis connection ");
 		jedis.connect();
 
-		// Run a server thread that handles requests from
 		start();
 	}
 
+	/**
+	 * Start listening for DSS requests (requests related to file management)
+	 */
 	private static void start() {
-		// Listening for client requests
+		// listening for client requests
 		ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
 		ServerSocket serverSock = null;
 		try {
@@ -72,12 +97,16 @@ public class DSSMaster {
 			}
 		}
 	}
+	
+	/** 
+	 * SUBCLASSES
+	 * ======================================================================================================== */
 
 	private static class DSSHandler implements Runnable {
-		private final Socket clientSock;
+		private final Socket clientSocket;
 
-		public DSSHandler(Socket sock) {
-			clientSock = sock;
+		public DSSHandler(Socket socket) {
+			clientSocket = socket;
 		}
 
 		@Override
@@ -89,8 +118,8 @@ public class DSSMaster {
 			boolean success = false;
 
 			try {
-				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
-				out = new PrintWriter(clientSock.getOutputStream());
+				in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+				out = new PrintWriter(clientSocket.getOutputStream());
 
 				dssRequest = gson.fromJson(in.readLine(), DSSRequest.class);
 			} catch (IOException e) {
@@ -106,25 +135,25 @@ public class DSSMaster {
 			if (dssRequest != null) {
 				switch (dssRequest.getType()) {
 				case GETNODES:
-					result = getNodes(0);
+					result = nodeManager.getNodes();
 					break;
-				case GETNODESWITHFILE: // get a list of nodes storing a specific file
+				case GETNODESWITHFILE: // get a list of nodes storing the file
 					if (dssRequest.getNamespace() != null && dssRequest.getFilename() != null) {
 						result = getStorageNodesWithFile(dssRequest.getNamespace(), dssRequest.getFilename());
 						out.println(gson.toJson(result));
-					} 
+					}
 					break;
-				case NEW: // notification on a new file stored on a specific node
+				case NEW: // notification indicating a new file is stored on the node
 					if (dssRequest.getNamespace() != null && dssRequest.getFilename() != null && dssRequest.getNodeId() != null) {
 						success = newFile(dssRequest.getNamespace(), dssRequest.getFilename(), dssRequest.getNodeId());
 					}
-					out.println(gson.toJson(success)); 
+					out.println(gson.toJson(success));
 					break;
-				case DELETE: // notification on a file has been deleted on a specific node
+				case DELETE: // notification indicating the file has been removed from the node
 					if (dssRequest.getNamespace() != null && dssRequest.getFilename() != null && dssRequest.getNodeId() != null) {
 						success = deleteFile(dssRequest.getNamespace(), dssRequest.getFilename(), dssRequest.getNodeId());
 					}
-					out.println(gson.toJson(success)); 
+					out.println(gson.toJson(success));
 					break;
 				default:
 					System.out.println("[DSSMASTER] Invalid DSS request: " + dssRequest.getType());
@@ -137,78 +166,69 @@ public class DSSMaster {
 			try {
 				if (in != null) in.close();
 				if (out != null) out.close();
-				if (clientSock != null) clientSock.close();
+				if (clientSocket != null) clientSocket.close();
 			} catch (IOException e) {
 				System.err.println("[DSSMASTER] Failed to close streams or socket: " + e.getMessage());
 			}
 		}
 	}
 
-
-
-	/**
-	 * TODO make it smarter instead of simply give all storage nodes
-	 * 
-	 * Get a list of storage nodes for data uploading.
-	 * @return
-	 */
-	private static HashMap<String, NodeInfo> getNodes(int option) {
-		return nodeHandler.nodes;
-	}
-
+	/** 
+	 * HANDLER METHODS
+	 * ======================================================================================================== */
+	
 	/**
 	 * Get a list of storage nodes containing a specific file.
 	 * 
-	 * @param namespace	The namespace
-	 * @param filename	The filename
-	 * @return 	List of nodes
+	 * @param namespace
+	 * @param filename
+	 * @return List of nodes
 	 */
-	private static HashMap<String, NodeInfo> getStorageNodesWithFile(String namespace, String filename) {		
-		String file = namespace + "-" + filename;
-		List<String> ids = jedis.lrange(file, 0, -1);
+	private static HashMap<String, NodeInfo> getStorageNodesWithFile(String namespace, String filename) {
+		String fileId = namespace + "-" + filename;
+		List<String> nodeIds = jedis.lrange(fileId, 0, -1);
 		HashMap<String, NodeInfo> result = new HashMap<String, NodeInfo>();
 
-		synchronized (nodeHandler.nodesLock) {
-			for (String id: ids) {
-				result.put(id, nodeHandler.nodes.get(id));
+		synchronized (nodeManager.nodesLock) {
+			for (String nodeId : nodeIds) {
+				result.put(nodeId, nodeManager.getNodes().get(nodeId));
 			}
 		}
-
 		return result;
 	}
 
 	/**
 	 * Record a new file that is stored in a specific node.
 	 * 
-	 * @param namespace	The namespace
-	 * @param filename	The name of the file that is uploaded
-	 * @param nodeId	The storage node id that stores the file
+	 * @param namespace
+	 * @param filename
+	 * @param nodeId
 	 */
 	private static boolean newFile(String namespace, String filename, String nodeId) {
-		String file = namespace + "-" + filename;
+		String fileId = namespace + "-" + filename;
 
-		System.out.println("[DSSMASTER] New File: " + file + " stored in node: " + nodeId);
-		jedis.lpush(file, nodeId);
+		System.out.println("[DSSMASTER] A new file " + fileId + " is stored in node " + nodeId);
+		jedis.lpush(fileId, nodeId);
 		return true;
 	}
 
 	/**
 	 * Handle delete request for a specific file on a specific node.
-	 * @param namespace	The namespace
-	 * @param filename	The filename
-	 * @param nodeId	The node that stores the file
+	 * 
+	 * @param namespace
+	 * @param filename
+	 * @param nodeId
 	 * @return
 	 */
-	private static boolean deleteFile(String namespace, String filename, String nodeId) {
-		String file = namespace + "-" + filename;
-		List<String> nodes = jedis.lrange(file, 0, -1);
+	private static boolean deleteFile(String namespace, String filename, String node) {
+		String fileId = namespace + "-" + filename;
+		List<String> nodeIds = jedis.lrange(fileId, 0, -1);
 
-		if (nodes == null)
-			return false;
+		if (nodeIds == null) return false;
 
-		for (String id: nodes) {
-			if (id.equals(nodeId)) {
-				jedis.lrem(file, 0, nodeId);
+		for (String nodeId : nodeIds) {
+			if (nodeId.equals(node)) {
+				jedis.lrem(fileId, 0, nodeId);
 				break;
 			}
 		}

@@ -2,8 +2,8 @@ CREATE TABLE node (
 	id varchar(30),
 	ip varchar(30) not null,
 	type varchar(10),
-	latitude double,
-	longitude double,
+	latitude float,
+	longitude float,
 	online long,
 	PRIMARY KEY (id, type)
 );
@@ -21,7 +21,7 @@ CREATE TABLE node_conn (
 
 
 CREATE TABLE application (
-	id int unsigned,
+	id long unsigned,
 	name varchar(30),
 	type varchar(30) not null,
 	priority int unsigned,
@@ -33,9 +33,9 @@ CREATE TABLE application (
 );
 
 CREATE TABLE job (
-	id int unsigned,
+	id long unsigned,
 	type varchar(30) not null,
-	app_id int unsigned,
+	app_id long unsigned,
 	active tinyint,
 	complete tinyint,
 	exe_filename varchar(30) not null,
@@ -47,8 +47,8 @@ CREATE TABLE job (
 );
 
 CREATE TABLE task (
-	id int unsigned,
-	job_id int unsigned,
+	id long unsigned,
+	job_id long unsigned,
 	completing_node varchar(30),
 	active tinyint,
 	complete tinyint,
@@ -59,8 +59,8 @@ CREATE TABLE task (
 );
 
 CREATE TABLE dependency (
-	id int unsigned,
-	dep_id int unsigned,
+	id long unsigned,
+	dep_id long unsigned,
 	PRIMARY KEY (id, dep_id),
 	FOREIGN KEY (id) REFERENCES job(id) ON DELETE CASCADE,
 	FOREIGN KEY (dep_id) REFERENCES job(id) ON DELETE CASCADE
@@ -68,7 +68,7 @@ CREATE TABLE dependency (
 
 
 CREATE TABLE job_file (
-	id int unsigned,
+	id long unsigned,
 	filename varchar(50),
 	PRIMARY KEY (id, filename),
 	FOREIGN KEY (id) REFERENCES job(id) ON DELETE CASCADE

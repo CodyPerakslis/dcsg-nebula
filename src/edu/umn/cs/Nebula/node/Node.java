@@ -5,120 +5,124 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.HttpURLConnection;
+import java.net.Socket;
 import java.net.URL;
+import java.util.LinkedList;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.reflect.TypeToken;
 
-import edu.umn.cs.Nebula.model.Coordinate;
-import edu.umn.cs.Nebula.model.NodeType;
+import edu.umn.cs.Nebula.request.NodeRequest;
+import edu.umn.cs.Nebula.request.NodeRequestType;
 
 public abstract class Node {
+	protected static final Gson gson = new Gson();
 
-	public static String id = null;
-	public static String ip = null;
-	public static Coordinate coordinate = new Coordinate(Double.MIN_VALUE, Double.MIN_VALUE);
-	public static double bandwidth = -1.0;
-	public static double latency = -1.0;
+	protected static NodeInfo nodeInfo;
+	protected static NodeType type;
+	
+	// A list of neighboring nodes and its lock
+	protected static LinkedList<String> neighbors = new LinkedList<String>();
+	protected static final Object neighborsLock = new Object();
+		
+	/**
+	 * Get a node information (id, ip, latitude, longitude)
+	 */
+	protected static void getNodeInformation() {
+		// Get the location of the ip address
+		String line = null;
+		String data = "";
+		
+		try {
+			// get the node's ip address
+			URL ipLookupURL;
+			ipLookupURL = new URL(String.format("http://ipinfo.io/json"));
+			HttpURLConnection ipLookupConn = (HttpURLConnection) ipLookupURL.openConnection();
+			ipLookupConn.setRequestMethod("GET");
+			ipLookupConn.connect();
 
-	public static void connect(String url, NodeType type) {
-		Thread pingThread = new Thread(new PingThread(url, type));
-		pingThread.start();
-	}
-
-	private static class PingThread implements Runnable {
-		private final String server;
-		private final NodeType type;
-		private final int pingInterval = 2000; // in milliseconds
-
-		private PingThread(String url, NodeType type) {
-			this.server = url;
-			this.type = type;
+			BufferedReader br = new BufferedReader(new InputStreamReader(ipLookupConn.getInputStream()));
+			while((line = br.readLine()) != null) {
+				data += line;
+			}
+		} catch(IOException e) {
+			System.out.println("[NODE] Failed connecting to ip look up service: " + e);
 		}
+		JsonParser parser = new JsonParser();
+		JsonObject jsonData = parser.parse(data).getAsJsonObject();
+		if (jsonData.get("loc") == null) {
+			// location not found
+			System.out.println("Location not found: " + jsonData);
+		} else {
+			String[] returnedCoordinate = jsonData.get("loc").toString().replace("\"", "").split(",");
+			String ip = jsonData.get("ip").toString();
+			ip = ip.substring(1, ip.length()-1);
+			nodeInfo = new NodeInfo(ip, ip, 
+					Float.parseFloat(returnedCoordinate[0]), 
+					Float.parseFloat(returnedCoordinate[1]),
+					type);
+		}	
+	}
+	
+	/**
+	 * Periodically send a heartbeat to the master. 
+	 * The heartbeat message is on the form of @NodeInfo.
+	 * The response contains a list of neighboring nodes.
+	 * 
+	 * @author albert
+	 */
+	protected static class Ping implements Runnable {
+		int interval = 3000; // in milliseconds
+		String master;
+		int port;
 
+		public Ping(String master, int port) {
+			this.master = master;
+			this.port = port;
+		}
+		
 		@Override
 		public void run() {
+			NodeRequest request = new NodeRequest(nodeInfo, NodeRequestType.ONLINE);
 			BufferedReader in = null;
+			PrintWriter out = null;
+			Socket socket = null;
 
 			while (true) {
 				try {
-					URL url = new URL(server);
-					HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-					conn.setRequestMethod("POST");
-					conn.setDoInput(true);
-					conn.setDoOutput(true);
-
-					PrintWriter out = new PrintWriter(conn.getOutputStream());
-					if (id == null) {
-						getNodeInformation();
-					}
-					out.write("id=" + id + "&ip=" + ip + "&requestType=ONLINE&nodeType=" + type + 
-							"&latitude=" + coordinate.getLatitude() + "&longitude=" + coordinate.getLongitude());
+					// send a heartbeat to the Job Manager
+					socket = new Socket(master, port);
+					out = new PrintWriter(socket.getOutputStream());
+					in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+					out.println(gson.toJson(request));
 					out.flush();
-					conn.connect();
-
-					if (conn.getResponseCode() == 200) {
-						in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-						String response = in.readLine();
-						if (response.equalsIgnoreCase("OK")) {
-							//System.out.println("[NODE] id: " + id + " lat: " + latitude + " lon: " + longitude);
-						} else {
-							System.out.println("[NODE] " + response);
-						}
-						in.close();
-					} else {
-						System.out.println("[NODE] Response code: " + conn.getResponseCode());
-						System.out.println("[NODE] Message: " + conn.getResponseMessage());
+					synchronized (neighborsLock) {
+						// update the list of neighboring nodes
+						neighbors = gson.fromJson(in.readLine(), new TypeToken<LinkedList<String>>() {}.getType());
+						neighbors.remove(nodeInfo.getId()); // remove myself from the list
 					}
 				} catch (IOException e) {
-					System.out.println("[NODE] Failed connecting to Nebula: " + e);
-					return;
+					System.out.println("[" + nodeInfo.getId() + "] Ping failed: " + e);
+				} finally {
+					try {
+						if (in != null)
+							in.close();
+						if (out != null)
+							out.close();
+						if (socket != null)
+							socket.close();
+					} catch (IOException e) {
+						System.err.println("[" + nodeInfo.getId() + "] Failed closing streams/socket: " + e);
+					}
 				}
 				try {
-					Thread.sleep(pingInterval);
+					Thread.sleep(interval);
 				} catch (InterruptedException e) {
-					e.printStackTrace();
+					return;
 				}
 			}
-		}
-
-		/**
-		 * Get a node information (id, ip, latitude, longitude)
-		 */
-		private void getNodeInformation() {
-			// Get the location of the ip address
-			String line = null;
-			String data = "";
-			
-			try {
-				// get the node's ip address
-				URL ipLookupURL;
-				ipLookupURL = new URL(String.format("http://ipinfo.io/json"));
-				HttpURLConnection ipLookupConn = (HttpURLConnection) ipLookupURL.openConnection();
-				ipLookupConn.setRequestMethod("GET");
-				ipLookupConn.connect();
-
-				BufferedReader br = new BufferedReader(new InputStreamReader(ipLookupConn.getInputStream()));
-				while((line = br.readLine()) != null) {
-					data += line;
-				}
-			} catch(IOException e) {
-				System.out.println("[NODE] Failed connecting to ip look up service: " + e);
-			}
-			JsonParser parser = new JsonParser();
-			JsonObject jsonData = parser.parse(data).getAsJsonObject();
-			if (jsonData.get("loc") == null) {
-				// location not found
-				System.out.println("Location not found: " + jsonData);
-			} else {
-				String[] returnedCoordinate = jsonData.get("loc").toString().replace("\"", "").split(",");
-				ip = jsonData.get("ip").toString();
-				coordinate.setLatitude(Double.parseDouble(returnedCoordinate[0]));
-				coordinate.setLongitude(Double.parseDouble(returnedCoordinate[1]));
-			}
-			// create a new node object
-			ip = ip.substring(1, ip.length()-1);
-			id = ip;
 		}
 	}
 }
