@@ -1,4 +1,4 @@
-package edu.umn.cs.Nebula.instance.scheduler;
+package edu.umn.cs.Nebula.instance.jobManager;
 
 import java.util.HashMap;
 
@@ -7,7 +7,7 @@ import edu.umn.cs.Nebula.job.Job;
 import edu.umn.cs.Nebula.job.Task;
 import edu.umn.cs.Nebula.schedule.Lease;
 
-public class MapReduceScheduler extends Scheduler {
+public class MapReduceJobManager extends JobManager {
 	private static final long sleepTime = 5000; // in milliseconds
 	private static HashMap<String, Task> temporaryNodeTaskMapping = new HashMap<String, Task>();
 	

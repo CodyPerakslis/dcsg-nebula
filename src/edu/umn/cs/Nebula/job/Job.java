@@ -5,7 +5,9 @@ import java.util.Date;
 import java.util.HashMap;
 
 public class Job implements Comparable<Job> {
-	public final static int DEFAULT_PRIORITY = 5;
+	public final static int DEFAULT_PRIORITY = 0;
+	public final static int MIN_PRIORITY = 0;
+	public final static int MAX_PRIORITY = 10;
 	
 	private long jobId;
 	private long applicationId;
@@ -86,8 +88,14 @@ public class Job implements Comparable<Job> {
 		return priority;
 	}
 
-	public void setPriority(int priority) {
-		this.priority = priority;
+	public void increasePriority() {
+		if (priority < MAX_PRIORITY)
+			priority++;
+	}
+	
+	public void decreasePriority() {
+		if (priority > MIN_PRIORITY)
+			priority--;
 	}
 	
 	@Override
@@ -217,12 +225,12 @@ public class Job implements Comparable<Job> {
 		return tasks.size();
 	}
 
-	public int removeTask(int taskId) {
+	public int removeTask(long taskId) {
 		tasks.remove(taskId);
 		return tasks.size();
 	}
 
-	public Task getTask(int taskId) {
+	public Task getTask(long taskId) {
 		return tasks.get(taskId);
 	}
 

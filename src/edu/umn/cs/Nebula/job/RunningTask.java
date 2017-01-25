@@ -11,7 +11,7 @@ public class RunningTask extends Task {
 		super(taskId, type, command, exec, status);
 	}
 	
-	public RunningTask(int taskId, int jobId, JobType type, String command, String executableFile, TaskStatus status) {
+	public RunningTask(long taskId, int jobId, JobType type, String command, String executableFile, TaskStatus status) {
 		super(taskId, jobId, type, command, executableFile, status);
 	}
 

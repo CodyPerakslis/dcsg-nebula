@@ -2,6 +2,8 @@ package edu.umn.cs.Nebula.schedule;
 
 
 public class Lease {
+	public static long MAX_LEASE_TIME = 300000;
+	
 	private String scheduler;
 	private long expiredTime;
 	
