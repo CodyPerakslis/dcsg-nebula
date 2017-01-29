@@ -14,10 +14,18 @@ import edu.umn.cs.Nebula.schedule.Lease;
 
 public class MobileJobManager extends JobManager {
 
-	/** ======================================================================================================== */
+	/**
+	 * ========================================================================
+	 */
 
 	public static void main(String[] args) throws IOException {
-		start("MOBILE", ApplicationType.STREAM, 2021, 6420, 6421, true);
+		start("MOBILE", 
+				ApplicationType.STREAM, 
+				2021, 	// port used by nodes to communicate with the scheduler
+				6420, 	// port used to listen for jobs
+				6421, 	// port used to listen for tasks
+				30, 	// number of worker threads per listener
+				true);
 
 		if (DEBUG) System.out.println("[" + name + "] Scheduler starts running");
 		// start the scheduler
@@ -25,9 +33,9 @@ public class MobileJobManager extends JobManager {
 		scheduler.start();
 	}
 
-	/** ======================================================================================================== */
-
-
+	/**
+	 * ========================================================================
+	 */
 
 	/**
 	 * Scheduler for the job. Schedule every tasks of the job to nodes.
@@ -40,12 +48,10 @@ public class MobileJobManager extends JobManager {
 		@Override
 		public void run() {
 			Job jobToBeScheduled;
-			int numTasks;
 			int numScheduledTasks;
 
 			while (true) {
 				// TODO first handle tasks that need to be rescheduled
-
 
 				if (jobQueue.isEmpty()) {
 					try { // go to sleep if there is no jobs need scheduling
@@ -65,19 +71,19 @@ public class MobileJobManager extends JobManager {
 					if (jobQueue.isEmpty()) continue;
 					jobToBeScheduled = jobQueue.remove();
 				}
-				numTasks = jobToBeScheduled.getNumTasks();
-				// schedule the tasks, get the number of tasks that have been successfully scheduled
+				
+				// schedule the tasks, get the number of tasks that have been
+				// successfully scheduled
 				if (DEBUG) System.out.println("[" + name + "] Scheduling job " + jobToBeScheduled.getId());
 				numScheduledTasks = schedule(jobToBeScheduled);
 
-				// if any of the tasks could not be scheduled, add the job back to the queue
+				// if any of the tasks could not be scheduled, add the job back
+				// to the queue
 				if (numScheduledTasks < 0) {
 					if (DEBUG) System.out.println("[" + name + "] No tasks can be scheduled");
 					continue;
 				}
 				synchronized (schedulerLock) {
-					if (DEBUG) System.out.println("[" + name + "] Successfully schedule " + numScheduledTasks + " out of " + numTasks + " tasks");
-
 					if (numScheduledTasks > 0 && jobToBeScheduled.getNumTasks() > 0) {
 						// update the next task to be scheduled
 						jobToBeScheduled.increasePriority();
@@ -88,16 +94,15 @@ public class MobileJobManager extends JobManager {
 		}
 
 		/**
-		 * Schedule a job.
-		 * ASSUMPTION: each task consider a CPU as a resources. Maximum
-		 * number of tasks that can be scheduled = number of CPUs offered by a node.
-		 * TODO implement a good policy in selecting nodes.
+		 * Schedule a job. ASSUMPTION: each task consider a CPU as a resources.
+		 * Maximum number of tasks that can be scheduled = number of CPUs
+		 * offered by a node.
 		 * 
-		 * @param job	the job to be scheduled
-		 * @return		the number of tasks that are successfully scheduled
+		 * @param job
+		 *            the job to be scheduled
+		 * @return the number of tasks that are successfully scheduled
 		 */
 		private int schedule(Job job) {
-			int numTasks = job.getNumTasks();
 			boolean success = false;
 			HashMap<String, RunningTask> deployableTasks = new HashMap<String, RunningTask>();
 			HashMap<String, Lease> leaseRequest = new HashMap<String, Lease>();
@@ -108,7 +113,7 @@ public class MobileJobManager extends JobManager {
 			availableNodes.addAll(onlineNodes.keySet());
 			availableNodes.removeAll(usedNodes.keySet());
 			if (availableNodes.isEmpty()) {
-				if (DEBUG) System.out.println("[" + name + "] No available nodes found");
+				if (DEBUG) System.out.println("[" + name + "] No available nodes");
 				return 0;
 			}
 
@@ -116,28 +121,21 @@ public class MobileJobManager extends JobManager {
 				if (DEBUG) System.out.println("[" + name + "] Invalid job type: " + job.getJobType());
 				return -1;
 			}
-			
-			// TODO fix the scheduling policy using the grid index
-			for (long taskId: job.getTasks().keySet()) {
+
+			// TODO fix the scheduling policy
+			for (long taskId : job.getTasks().keySet()) {
 				if (availableNodes.size() <= 0) {
 					break;
 				}
-				if (DEBUG) System.out.println("[" + name + "] Scheduling task " + taskId + " out of " + numTasks + " tasks");
 
 				// send the task to the node
 				String nodeId = availableNodes.removeFirst();
-				RunningTask task = new RunningTask(
-						taskId, 
-						job.getJobType(), 
-						job.getCommand(),
-						job.getExecutableFile(),
-						TaskStatus.RUNNING);
+				RunningTask task = new RunningTask(taskId, job.getJobType(), job.getCommand(), job.getExecutableFile(), TaskStatus.RUNNING);
 				task.setJobId(job.getId());
 				task.setNodeId(nodeId);
 
 				deployableTasks.put(nodeId, task);
-				// TODO fix the lease
-				leaseRequest.put(nodeId, new Lease(name, Lease.MAX_LEASE_TIME)); 
+				leaseRequest.put(nodeId, new Lease(name, Lease.MAX_LEASE_TIME));
 			}
 
 			successLeases = leaseNodes(leaseRequest);
@@ -145,26 +143,25 @@ public class MobileJobManager extends JobManager {
 				if (DEBUG) System.out.println("[" + name + "] Failed leasing nodes: " + deployableTasks.keySet());
 				return -1;
 			}
-			
-			for (String nodeId: deployableTasks.keySet()) {
+
+			for (String nodeId : deployableTasks.keySet()) {
 				if (!successLeases.containsKey(nodeId)) {
 					deployableTasks.remove(nodeId);
 				}
 			}
-			
+
 			int numScheduledTasks = 0;
 			RunningTask task;
-			for (String nodeId: deployableTasks.keySet()) {
+			for (String nodeId : deployableTasks.keySet()) {
 				// Deploy the task on the node
 				task = deployableTasks.get(nodeId);
 				success = sendTaskRequest(nodeId, nodePort, task, TaskRequestType.RUN);
 
-				if (success) {				
+				if (success) {
 					numScheduledTasks++;
 					// keep the job-task info in the runningJobs structure
 					synchronized (schedulerLock) {
-						if (!runningJobs.containsKey(job.getId())) {
-							runningJobs.put(job.getId(), new LinkedList<Long>());
+						if (!runningJobs.containsKey(job.getId())) {runningJobs.put(job.getId(), new LinkedList<Long>());
 						}
 						runningJobs.get(job.getId()).addLast(task.getId());
 						runningTasks.put(job.getId() + "_" + task.getId(), task);

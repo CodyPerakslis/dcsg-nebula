@@ -40,13 +40,13 @@ public abstract class JobManager {
 	protected static ApplicationType appType;
 	protected static long SLEEP_TIME = 2000; // in milliseconds
 	protected static long GRACE_PERIOD = 0; // in milliseconds
-	
+
 	/* Utilities */
 	protected static boolean DEBUG = false;
 	protected static Gson gson = new Gson();
-	
+
 	/* Node and lease utilities */
-	protected static String	resourceManagerServer = "localhost";
+	protected static String resourceManagerServer = "localhost";
 	protected static int resourceManagerPort;
 	protected static int nodePort = 2021;
 	protected static HashMap<String, NodeInfo> onlineNodes = new HashMap<String, NodeInfo>();
@@ -56,9 +56,6 @@ public abstract class JobManager {
 
 	/* Job/Task utilities */
 	private static long jobId = 0;
-	protected static int poolSize = 20;
-	protected static int jobRequestPort;
-	protected static int taskRequestPort;
 	protected static HashMap<Long, LinkedList<Long>> runningJobs = new HashMap<Long, LinkedList<Long>>();
 	protected static HashMap<String, RunningTask> runningTasks = new HashMap<String, RunningTask>();
 	protected static HashMap<String, TaskInfo> runningTaskStatuses = new HashMap<String, TaskInfo>();
@@ -68,15 +65,16 @@ public abstract class JobManager {
 
 	protected static Queue<Job> jobQueue = new PriorityQueue<Job>(100,
 			new Comparator<Job>() {
-		@Override
-		public int compare(Job job1, Job job2) {
-			return job1.getPriority() - job2.getPriority();
-		}
-	});
+				@Override
+				public int compare(Job job1, Job job2) {
+					return job1.getPriority() - job2.getPriority();
+				}
+			});
 
-	/** 
-	 * UTILITY METHODS 
-	 * ======================================================================================================== */
+	/**
+	 * UTILITY METHODS
+	 * ==========================================================
+	 */
 
 	/**
 	 * Initialize a scheduler and run a lease-monitoring thread, which monitors
@@ -87,21 +85,25 @@ public abstract class JobManager {
 	 * @param schedulerName
 	 * @param type
 	 */
-	protected static void start(String schedulerName, ApplicationType type, int nodeListenerPort, int jobListenerPort, int taskListenerPort, boolean debug) {
-		if (DEBUG) System.out.print("[" + schedulerName + "] initializing scheduler of type " + type);
+	protected static void start(
+			String schedulerName, 
+			ApplicationType type,
+			int nodeListenerPort, 
+			int jobListenerPort, 
+			int taskListenerPort,
+			int numWorkerThreads,
+			boolean debug) {
 		name = schedulerName;
 		nodePort = nodeListenerPort;
-		jobRequestPort = jobListenerPort;
-		taskRequestPort = taskListenerPort;
 		appType = type;
 		DEBUG = debug;
 
-		Thread jobListener = new Thread(new JobListener());
+		Thread jobListener = new Thread(new JobListener(jobListenerPort, numWorkerThreads));
 		jobListener.start();
-		
-		Thread taskListener = new Thread(new TaskListener());
+
+		Thread taskListener = new Thread(new TaskListener(taskListenerPort, numWorkerThreads));
 		taskListener.start();
-		
+
 		Thread leaseMonitor = new Thread(new LeaseMonitor());
 		leaseMonitor.start();
 
@@ -111,9 +113,10 @@ public abstract class JobManager {
 		}
 	}
 
-	/**  
+	/**
 	 * SUBCLASSES
-	 * ======================================================================================================== */
+	 * ================================================================
+	 */
 
 	/**
 	 * This thread listens for any job requests.
@@ -121,15 +124,21 @@ public abstract class JobManager {
 	 * @author albert
 	 */
 	private static class JobListener implements Runnable {
-
+		private final int port;
+		private final int numThreads;
+		
+		public JobListener(int port, int poolSize) {
+			this.port = port;
+			this.numThreads = poolSize;
+		}
+		
 		@Override
 		public void run() {
-			ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
+			ExecutorService requestPool = Executors.newFixedThreadPool(numThreads);
 			ServerSocket serverSocket = null;
 
 			try {
-				serverSocket = new ServerSocket(jobRequestPort);
-				if (DEBUG) System.out.println("[" + name + "] Listening for job requests at port " + jobRequestPort);
+				serverSocket = new ServerSocket(port);
 				while (true) {
 					requestPool.submit(new JobRequestHandler(serverSocket.accept()));
 				}
@@ -147,22 +156,28 @@ public abstract class JobManager {
 			}
 		}
 	}
-	
+
 	/**
 	 * This thread listens for any task requests.
 	 * 
 	 * @author albert
 	 */
 	private static class TaskListener implements Runnable {
+		private final int port;
+		private final int numThreads;
 
+		public TaskListener(int port, int poolSize) {
+			this.port = port;
+			this.numThreads = poolSize;
+		}
+		
 		@Override
 		public void run() {
-			ExecutorService requestPool = Executors.newFixedThreadPool(poolSize);
+			ExecutorService requestPool = Executors.newFixedThreadPool(numThreads);
 			ServerSocket serverSocket = null;
 
 			try {
-				serverSocket = new ServerSocket(taskRequestPort);
-				if (DEBUG) System.out.println("[" + name + "] Listening for task requests at port " + taskRequestPort);
+				serverSocket = new ServerSocket(port);
 				while (true) {
 					requestPool.submit(new TaskRequestHandler(serverSocket.accept()));
 				}
@@ -200,9 +215,6 @@ public abstract class JobManager {
 			if (jobRequest == null || jobRequest.getType() == null) {
 				return response;
 			}
-
-			if (DEBUG) System.out.println("[SCHEDULER] Received a job request of type " + jobRequest.getType());
-
 			Job job = jobRequest.getJob();
 			switch (jobRequest.getType()) {
 			case SUBMIT:
@@ -213,7 +225,7 @@ public abstract class JobManager {
 						job.setId(jobId);
 						jobId++;
 						jobQueue.add(job);
-						response = "Job ID: " + Long.toString(jobId-1);
+						response = "Job ID: " + Long.toString(jobId - 1);
 					}
 					synchronized (schedulerWait) {
 						// notify the scheduler there is a new job in the queue
@@ -231,16 +243,18 @@ public abstract class JobManager {
 				if (job != null) {
 					synchronized (schedulerLock) {
 						if ((tasks = runningJobs.remove(job.getId())) != null) {
-							for (Long taskId: tasks) {
+							for (Long taskId : tasks) {
 								// get the task to be killed
 								killedTask = runningTasks.remove(taskId);
 								nodeId = killedTask.getNodeId();
 								// send a CANCEL request to the node
-								sendTaskRequest(nodeId, nodePort, killedTask, TaskRequestType.CANCEL);
+								sendTaskRequest(nodeId, nodePort, killedTask,
+										TaskRequestType.CANCEL);
 							}
 							success = true;
 						}
-						// make sure that the job is removed from the schedule queue if it has not been scheduled yet
+						// make sure that the job is removed from the schedule
+						// queue if it has not been scheduled yet
 						response = Boolean.toString(jobQueue.remove(job) || success);
 					}
 				}
@@ -256,7 +270,7 @@ public abstract class JobManager {
 			String response = "Failed";
 
 			try {
-				in = new BufferedReader(new InputStreamReader (clientSock.getInputStream()));
+				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
 				out = new PrintWriter(clientSock.getOutputStream(), true);
 				String message = in.readLine();
 				jobRequest = gson.fromJson(message, JobRequest.class);
@@ -286,14 +300,12 @@ public abstract class JobManager {
 		}
 
 		private String parseTaskRequest(TaskRequest taskRequest) {
-			String response = "invalid request structure";
+			String response = "Invalid task request";
 
 			// make sure the task request is valid
 			if (taskRequest == null || taskRequest.getType() == null) {
 				return response;
 			}
-
-			if (DEBUG) System.out.println("[" + name + "] Received a task request of type " + taskRequest.getType());
 
 			RunningTask task = taskRequest.getTask();
 			long taskId = task.getId();
@@ -321,7 +333,7 @@ public abstract class JobManager {
 				break;
 			case UPDATE:
 				// status update for a task
-				for (String processId: taskRequest.getTaskStatuses().keySet()) {
+				for (String processId : taskRequest.getTaskStatuses().keySet()) {
 					taskInfo = taskRequest.getTaskStatuses().get(processId);
 					nodeId = runningTasks.get(processId).getNodeId();
 					jobId = Long.parseLong(processId.split("_")[0]);
@@ -362,7 +374,7 @@ public abstract class JobManager {
 						}
 						break;
 					default:
-						if (DEBUG) System.out.println("[" + name + "] Undefined task status in update request");
+						break;
 					}
 				}
 				response = "OK";
@@ -380,7 +392,7 @@ public abstract class JobManager {
 			String response = "Failed";
 
 			try {
-				in = new BufferedReader(new InputStreamReader (clientSock.getInputStream()));
+				in = new BufferedReader(new InputStreamReader(clientSock.getInputStream()));
 				out = new PrintWriter(clientSock.getOutputStream(), true);
 				String message = in.readLine();
 				taskRequest = gson.fromJson(message, TaskRequest.class);
@@ -396,7 +408,7 @@ public abstract class JobManager {
 			out.close();
 		}
 	}
-	
+
 	/**
 	 * This thread periodically checks any expired leases. Release all expired
 	 * lease whose time has exceeded the GRACE_PERIOD.
@@ -414,7 +426,8 @@ public abstract class JobManager {
 						// for each leased node, check if the lease has expired
 						if (usedNodes.containsKey(leasedNodeId)) {
 							if (leases.get(leasedNodeId).getRemainingTime() <= GRACE_PERIOD) {
-								// the node is currently in-used but has been expired
+								// the node is currently in-used but has been
+								// expired
 								expiredNodes.add(leasedNodeId);
 							}
 						} else if (leases.get(leasedNodeId).getRemainingTime() <= 0) {
@@ -435,7 +448,8 @@ public abstract class JobManager {
 				try {
 					Thread.sleep(SLEEP_TIME);
 				} catch (InterruptedException e) {
-					System.err.println("[" + name + "] Lease monitor thread failed to sleep");
+					System.err.println("[" + name
+							+ "] Lease monitor thread failed to sleep");
 				}
 			}
 		}
@@ -451,9 +465,9 @@ public abstract class JobManager {
 		private static void printTaskStatuses() {
 			System.out.println("========= TASK STATUSES =========");
 			synchronized (schedulerLock) {
-				System.out.println("[" + name + "] Number of jobs in queue: " + jobQueue.size());
+				System.out.println("[" + name + "] Number of jobs in queue: "+ jobQueue.size());
 				System.out.println("[" + name + "] Running tasks: " + runningTasks.keySet());
-				System.out.println("[" + name + "] Reschedule tasks: " + rescheduleTasks.keySet());		
+				System.out.println("[" + name + "] Reschedule tasks: " + rescheduleTasks.keySet());
 			}
 			System.out.println("==========================\n");
 		}
@@ -471,8 +485,8 @@ public abstract class JobManager {
 			while (true) {
 				try {
 					Thread.sleep(SLEEP_TIME);
-				} catch (InterruptedException e) { 
-					return; 
+				} catch (InterruptedException e) {
+					return;
 				}
 				printNodeStatuses();
 				printTaskStatuses();
@@ -480,9 +494,10 @@ public abstract class JobManager {
 		}
 	}
 
-	/**  
-	 * COMMUNICATION METHODS WITH THE RESOURCE MANAGER AND APPLICATION MANAGER
-	 * ======================================================================================================== */
+	/**
+	 * COMMUNICATION METHODS WITH THE RESOURCE MANAGER
+	 * ========================================================================
+	 */
 
 	/**
 	 * Update the status of all online nodes. Find any used nodes that left the
@@ -512,9 +527,9 @@ public abstract class JobManager {
 			System.err.println("[" + name + "] Failed getting nodes: " + e);
 		} finally {
 			try {
-				if (in != null) in.close();
-				if (out != null) out.close();
-				if (socket != null) socket.close();
+				if (in != null)in.close();
+				if (out != null)out.close();
+				if (socket != null)socket.close();
 			} catch (IOException e) {
 				System.err.println("[" + name + "] Failed closing streams/socket: " + e);
 			}
@@ -554,13 +569,15 @@ public abstract class JobManager {
 		HashMap<String, Lease> successLeases = null;
 
 		if (leaseRequest == null || leaseRequest.isEmpty()) {
-			if (DEBUG) System.out.println("[" + name + "] Lease is null or empty.");
+			if (DEBUG)
+				System.out.println("[" + name + "] Lease is null or empty.");
 			return null;
 		}
 
 		for (String nodeId : leaseRequest.keySet()) {
-			// we can only lease nodes that are currently not being used by another scheduler
-			if (onlineNodes.containsKey(nodeId) 
+			// we can only lease nodes that are currently not being used by
+			// another scheduler
+			if (onlineNodes.containsKey(nodeId)
 					&& (onlineNodes.get(nodeId).getNote().equals("0") || leases.containsKey(nodeId))) {
 				request.addLease(nodeId, leaseRequest.get(nodeId));
 			}
@@ -575,21 +592,21 @@ public abstract class JobManager {
 			// send a LEASE request to the resource manager
 			out.println(gson.toJson(request));
 			out.flush();
-			successLeases = gson.fromJson(in.readLine(), new TypeToken<HashMap<String, Lease>>() {}.getType());
+			successLeases = gson.fromJson(in.readLine(),new TypeToken<HashMap<String, Lease>>() {}.getType());
 		} catch (IOException e) {
 			System.err.println("[" + name + "] Failed leasing nodes: " + e);
 		} finally {
 			try {
-				if (in != null) in.close();
-				if (out != null) out.close();
-				if (socket != null) socket.close();
+				if (in != null)in.close();
+				if (out != null)out.close();
+				if (socket != null)socket.close();
 			} catch (IOException e) {
 				System.err.println("[" + name + "] Failed closing streams/socket: " + e);
 			}
 		}
 
 		if (successLeases == null || successLeases.isEmpty()) {
-			if (DEBUG) System.out.println("[" + name + "] Failed leasing. Leases return with null, or empty leases.");
+			if (DEBUG) System.out.println("["+ name+ "] Failed leasing. Leases return with null, or empty leases.");
 			return null;
 		}
 
@@ -629,153 +646,163 @@ public abstract class JobManager {
 			System.err.println("[" + name + "] Failed releasing nodes: " + e);
 		} finally {
 			try {
-				if (in != null) in.close();
-				if (out != null) out.close();
-				if (socket != null) socket.close();
+				if (in != null)in.close();
+				if (out != null)out.close();
+				if (socket != null)socket.close();
 			} catch (IOException e) {
-				System.err.println("[" + name + "] Failed closing streams/socket: " + e);
+				System.err.println("[" + name+ "] Failed closing streams/socket: " + e);
 			}
 		}
 		return success;
 	}
 
-//	/**
-//	 * Get a list of incomplete jobs of type @ApplicationType from the application
-//	 * manager
-//	 * 
-//	 * @param type
-//	 */
-//	protected static void getIncompleteJobs(ApplicationType type) {
-//		ApplicationRequest request = new ApplicationRequest(ApplicationRequestType.GETINCOMPLETEAPP, type);
-//		BufferedReader in = null;
-//		PrintWriter out = null;
-//		Socket socket = null;
-//		ArrayList<Application> incompleteApplications = null;
-//		HashSet<Long> removedTasks = new HashSet<Long>();
-//
-//		try {
-//			// setup connection to the application manager
-//			socket = new Socket(applicationManagerServer, applicationManagerPort);
-//			out = new PrintWriter(socket.getOutputStream());
-//			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-//
-//			// send a GETINCOMPLETEAPP message to the application manager
-//			out.println(gson.toJson(request));
-//			out.flush();
-//
-//			// get a list of applications of the scheduler's type
-//			incompleteApplications = gson.fromJson(in.readLine(), new TypeToken<ArrayList<Application>>() {}.getType());
-//		} catch (IOException e) {
-//			System.err.println("[" + name + "] Failed getting jobs: " + e);
-//		} finally {
-//			try {
-//				if (in != null) in.close();
-//				if (out != null) out.close();
-//				if (socket != null) socket.close();
-//			} catch (IOException e) {
-//				System.err.println("[" + name + "] Failed closing streams/socket: " + e);
-//			}
-//		}
-//
-//		// check if there is any applications that need to be scheduled
-//		if (incompleteApplications == null || incompleteApplications.isEmpty()) {
-//			if (DEBUG) System.out.println("[" + name + "] No application available.");
-//			return;
-//		}
-//
-//		for (Application incompleteApp : incompleteApplications) {
-//			if (completedApps.contains(incompleteApp.getId())) {
-//				// the application has actually been completed, ignore it
-//				continue;
-//			}
-//
-//			for (Job job : incompleteApp.getJobs().values()) {
-//				if (!job.isActive() || job.isComplete()) {
-//					// remove the job that has been completed or become inactive
-//					if (jobQueue.contains(job))
-//						jobQueue.remove(job);
-//					// check if any of the tasks belonging to the completed/inactive job
-//					// is still being monitored as "running"
-//					for (RunningTask runningTask : runningTasks.values()) {
-//						if (job.getTasks().containsKey(runningTask.getId())) {
-//							removedTasks.add(runningTask.getId());
-//						}
-//					}
-//					// check if any of the tasks belonging to the completed job
-//					// is still included to be rescheduled
-//					for (long taskId : rescheduleTasks.keySet()) {
-//						if (job.getTasks().containsKey(taskId)) {
-//							removedTasks.add(taskId);
-//						}
-//					}
-//				} else if (job.isActive()) { // incomplete active job
-//					if (!jobQueue.contains(job)) {
-//						jobQueue.add(job);
-//					}
-//				}
-//			}
-//		}
-//		if (!jobQueue.isEmpty()) {
-//			synchronized (schedulerWait) {
-//				// notify the scheduler there is a new job in the queue
-//				schedulerWait.notify();
-//			}
-//		}
-//
-//		RunningTask killedTask;
-//		for (long taskId : removedTasks) {
-//			killedTask = runningTasks.remove(taskId);
-//			rescheduleTasks.remove(taskId);
-//			// send a CANCEL request to the node
-//			sendTaskRequest(killedTask.getNodeId(), nodePort, killedTask, TaskRequestType.CANCEL);
-//		}
-//	}
-//
-//	/**
-//	 * Assign a task to a specific node. The task will be added to the node's
-//	 * queue in the Application Manager where each node is getting a task from.
-//	 * 
-//	 * @param nodeTask
-//	 * @return
-//	 */
-//	protected static boolean assignTasksToNodes(HashMap<String, Task> nodeTask) {
-//		ScheduleRequest request = new ScheduleRequest();
-//		request.setNodeTask(nodeTask);
-//		BufferedReader in = null;
-//		PrintWriter out = null;
-//		Socket socket = null;
-//		boolean success = false;
-//
-//		try {
-//			// setup connection to the application manager
-//			socket = new Socket(applicationManagerServer, applicationManagerPort);
-//			out = new PrintWriter(socket.getOutputStream());
-//			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-//
-//			// send the message to the application manager
-//			out.println(gson.toJson(request));
-//			out.flush();
-//			success = gson.fromJson(in.readLine(), Boolean.class);
-//		} catch (IOException e) {
-//			System.err.println("[" + name + "] Failed assigning tasks: "+ e);
-//		} finally {
-//			try {
-//				if (in != null) in.close();
-//				if (out != null) out.close();
-//				if (socket != null) socket.close();
-//			} catch (IOException e) {
-//				System.err.println("[" + name + "] Failed closing streams/socket: " + e);
-//			}
-//		}
-//		return success;
-//	}
+	// /**
+	// * Get a list of incomplete jobs of type @ApplicationType from the
+	// application
+	// * manager
+	// *
+	// * @param type
+	// */
+	// protected static void getIncompleteJobs(ApplicationType type) {
+	// ApplicationRequest request = new
+	// ApplicationRequest(ApplicationRequestType.GETINCOMPLETEAPP, type);
+	// BufferedReader in = null;
+	// PrintWriter out = null;
+	// Socket socket = null;
+	// ArrayList<Application> incompleteApplications = null;
+	// HashSet<Long> removedTasks = new HashSet<Long>();
+	//
+	// try {
+	// // setup connection to the application manager
+	// socket = new Socket(applicationManagerServer, applicationManagerPort);
+	// out = new PrintWriter(socket.getOutputStream());
+	// in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+	//
+	// // send a GETINCOMPLETEAPP message to the application manager
+	// out.println(gson.toJson(request));
+	// out.flush();
+	//
+	// // get a list of applications of the scheduler's type
+	// incompleteApplications = gson.fromJson(in.readLine(), new
+	// TypeToken<ArrayList<Application>>() {}.getType());
+	// } catch (IOException e) {
+	// System.err.println("[" + name + "] Failed getting jobs: " + e);
+	// } finally {
+	// try {
+	// if (in != null) in.close();
+	// if (out != null) out.close();
+	// if (socket != null) socket.close();
+	// } catch (IOException e) {
+	// System.err.println("[" + name + "] Failed closing streams/socket: " + e);
+	// }
+	// }
+	//
+	// // check if there is any applications that need to be scheduled
+	// if (incompleteApplications == null || incompleteApplications.isEmpty()) {
+	// if (DEBUG) System.out.println("[" + name +
+	// "] No application available.");
+	// return;
+	// }
+	//
+	// for (Application incompleteApp : incompleteApplications) {
+	// if (completedApps.contains(incompleteApp.getId())) {
+	// // the application has actually been completed, ignore it
+	// continue;
+	// }
+	//
+	// for (Job job : incompleteApp.getJobs().values()) {
+	// if (!job.isActive() || job.isComplete()) {
+	// // remove the job that has been completed or become inactive
+	// if (jobQueue.contains(job))
+	// jobQueue.remove(job);
+	// // check if any of the tasks belonging to the completed/inactive job
+	// // is still being monitored as "running"
+	// for (RunningTask runningTask : runningTasks.values()) {
+	// if (job.getTasks().containsKey(runningTask.getId())) {
+	// removedTasks.add(runningTask.getId());
+	// }
+	// }
+	// // check if any of the tasks belonging to the completed job
+	// // is still included to be rescheduled
+	// for (long taskId : rescheduleTasks.keySet()) {
+	// if (job.getTasks().containsKey(taskId)) {
+	// removedTasks.add(taskId);
+	// }
+	// }
+	// } else if (job.isActive()) { // incomplete active job
+	// if (!jobQueue.contains(job)) {
+	// jobQueue.add(job);
+	// }
+	// }
+	// }
+	// }
+	// if (!jobQueue.isEmpty()) {
+	// synchronized (schedulerWait) {
+	// // notify the scheduler there is a new job in the queue
+	// schedulerWait.notify();
+	// }
+	// }
+	//
+	// RunningTask killedTask;
+	// for (long taskId : removedTasks) {
+	// killedTask = runningTasks.remove(taskId);
+	// rescheduleTasks.remove(taskId);
+	// // send a CANCEL request to the node
+	// sendTaskRequest(killedTask.getNodeId(), nodePort, killedTask,
+	// TaskRequestType.CANCEL);
+	// }
+	// }
+	//
+	// /**
+	// * Assign a task to a specific node. The task will be added to the node's
+	// * queue in the Application Manager where each node is getting a task
+	// from.
+	// *
+	// * @param nodeTask
+	// * @return
+	// */
+	// protected static boolean assignTasksToNodes(HashMap<String, Task>
+	// nodeTask) {
+	// ScheduleRequest request = new ScheduleRequest();
+	// request.setNodeTask(nodeTask);
+	// BufferedReader in = null;
+	// PrintWriter out = null;
+	// Socket socket = null;
+	// boolean success = false;
+	//
+	// try {
+	// // setup connection to the application manager
+	// socket = new Socket(applicationManagerServer, applicationManagerPort);
+	// out = new PrintWriter(socket.getOutputStream());
+	// in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+	//
+	// // send the message to the application manager
+	// out.println(gson.toJson(request));
+	// out.flush();
+	// success = gson.fromJson(in.readLine(), Boolean.class);
+	// } catch (IOException e) {
+	// System.err.println("[" + name + "] Failed assigning tasks: "+ e);
+	// } finally {
+	// try {
+	// if (in != null) in.close();
+	// if (out != null) out.close();
+	// if (socket != null) socket.close();
+	// } catch (IOException e) {
+	// System.err.println("[" + name + "] Failed closing streams/socket: " + e);
+	// }
+	// }
+	// return success;
+	// }
 
 	/**
 	 * Send a task request directly to a node.
 	 * 
-	 * @param nodeIp	the targeted node
-	 * @param task		the task to run/cancel
-	 * @param type		the request type (RUN/CANCEL) 
+	 * @param nodeIp
+	 *            the targeted node
+	 * @param task
+	 *            the task to run/cancel
+	 * @param type
+	 *            the request type (RUN/CANCEL)
 	 * @return
 	 */
 	protected static boolean sendTaskRequest(String nodeIp, int port, RunningTask task, TaskRequestType type) {
@@ -799,17 +826,17 @@ public abstract class JobManager {
 			System.err.println("[" + name + "] Failed sending TaskRequest: " + e);
 		} finally {
 			try {
-				if (in != null) in.close();
-				if (out != null) out.close();
-				if (socket != null) socket.close();
-			} catch (IOException e) { 
-				System.err.println("[" + name + "] Failed closing streams/socket: " + e);
+				if (in != null)in.close();
+				if (out != null)out.close();
+				if (socket != null)	socket.close();
+			} catch (IOException e) {
+				System.err.println("[" + name+ "] Failed closing streams/socket: " + e);
 			}
 		}
 
 		if (response != null && response.equalsIgnoreCase("OK")) {
 			success = true;
-			if (DEBUG) System.out.println("[" + name + "] Start running task " + task.getId() + " @ " + nodeIp);
+			if (DEBUG) System.out.println("[" + name + "] Start running task "+ task.getId() + " @ " + nodeIp);
 		} else {
 			if (DEBUG) System.out.println("[" + name + "] Failed running task " + task.getId() + " @ " + nodeIp + ". Response: " + response);
 		}
