@@ -57,9 +57,14 @@ public abstract class Node {
 			System.out.println("Location not found: " + jsonData);
 		} else {
 			String[] returnedCoordinate = jsonData.get("loc").toString().replace("\"", "").split(",");
+			System.out.println("Returned coords: "+returnedCoordinate[0]);
 			String ip = jsonData.get("ip").toString();
 			ip = ip.substring(1, ip.length()-1);
-			nodeInfo = new NodeInfo(ip, ip, 
+//			nodeInfo = new NodeInfo(ip, ip, 
+//					Float.parseFloat(returnedCoordinate[0]), 
+//					Float.parseFloat(returnedCoordinate[1]),
+//					type);
+			nodeInfo = new NodeInfo("localhost", "localhost", 
 					Float.parseFloat(returnedCoordinate[0]), 
 					Float.parseFloat(returnedCoordinate[1]),
 					type);
@@ -92,19 +97,25 @@ public abstract class Node {
 
 			while (true) {
 				try {
+					System.out.println("Going to create a socket");
 					// send a heartbeat to the Job Manager
 					socket = new Socket(master, port);
+					System.out.println("Going to out Master: "+master);
 					out = new PrintWriter(socket.getOutputStream());
+					System.out.println("Going to in Port: "+port);
 					in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+					System.out.println("Going to Json Req");
 					out.println(gson.toJson(request));
 					out.flush();
 					synchronized (neighborsLock) {
 						// update the list of neighboring nodes
+						System.out.println("in the neighboursLock");
 						neighbors = gson.fromJson(in.readLine(), new TypeToken<LinkedList<String>>() {}.getType());
 						neighbors.remove(nodeInfo.getId()); // remove myself from the list
 					}
 				} catch (IOException e) {
-					System.out.println("[" + nodeInfo.getId() + "] Ping failed: " + e);
+					System.out.println("Exception Caught");
+					System.out.println("[" + nodeInfo.getId()+"] Ping failed: " + e);
 				} finally {
 					try {
 						if (in != null)

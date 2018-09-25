@@ -19,6 +19,24 @@ public class Task implements Comparable<Task> {
 	private String command;
 	private String executableFile;
 	private ArrayList<String> parameters;
+	private String urlOfExecutableFile;
+	public String getUrlOfExecutableFile() {
+		return urlOfExecutableFile;
+	}
+
+	public void setUrlOfExecutableFile(String urlOfExecutableFile) {
+		this.urlOfExecutableFile = urlOfExecutableFile;
+	}
+
+	public boolean isRemote() {
+		return isRemote;
+	}
+
+	public void setRemote(boolean isRemote) {
+		this.isRemote = isRemote;
+	}
+
+	private boolean isRemote;
 
 	/* optional for tasks that belong to a specific location */
 	private float latitude;
@@ -36,6 +54,16 @@ public class Task implements Comparable<Task> {
 		this.status = status;
 		this.command = command;
 		this.executableFile = executableFile;
+	}
+	
+	public Task(long id, JobType type, String command, String executableFile, TaskStatus status, String urlofapp, boolean remote) {
+		this.taskId = id;
+		this.type = type;
+		this.status = status;
+		this.command = command;
+		this.executableFile = executableFile;
+		this.urlOfExecutableFile=urlofapp;
+		this.isRemote=remote;
 	}
 	
 	public Task(long id, long jobId, JobType type, String command, String executableFile, TaskStatus status) {

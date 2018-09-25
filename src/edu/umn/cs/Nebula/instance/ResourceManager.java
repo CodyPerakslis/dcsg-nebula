@@ -40,7 +40,7 @@ public class ResourceManager {
 	
 	public static void main(String[] args) {
 		int nodeManagerPort = 6422;
-		int nodeManagerMaxInactive = 5000;
+		int nodeManagerMaxInactive = 120000;
 		int nodeManagerPoolSize = 50;
 		String nodeDatabaseUsername = "nebula";
 		String nodeDatabasePassword = "kvm";
@@ -64,8 +64,8 @@ public class ResourceManager {
 		}
 
 		nodeManager = new NodeManager(nodeManagerPort, nodeManagerMaxInactive, nodeManagerPoolSize, NodeType.COMPUTE);
-		nodeManager.connectDB(nodeDatabaseUsername, nodeDatabasePassword, nodeDatabaseServerName, nodeDatabaseName,
-				nodeDatabasePort);
+//		nodeManager.connectDB(nodeDatabaseUsername, nodeDatabasePassword, nodeDatabaseServerName, nodeDatabaseName,
+//				nodeDatabasePort);
 		nodeManager.run();
 
 		start();
@@ -82,7 +82,10 @@ public class ResourceManager {
 			serverSock = new ServerSocket(schedulerPort);
 			System.out.println("[RM] Listening for scheduler requests on port " + schedulerPort);
 			while (true) {
+//				System.out.println("Calling SchedulerHandle class");
+//				SchedulerHandler hs = new SchedulerHandler(serverSock.accept());
 				requestPool.submit(new SchedulerHandler(serverSock.accept()));
+//				hs.run();
 			}
 		} catch (IOException e) {
 			System.err.println("[RM] Failed to establish listening socket: " + e);
@@ -112,6 +115,7 @@ public class ResourceManager {
 
 		SchedulerHandler(Socket socket) {
 			this.socket = socket;
+			System.out.println("Socket with Sched @ "+socket.getPort());
 		}
 
 		public void run() {
@@ -122,10 +126,11 @@ public class ResourceManager {
 			try {
 				out = new PrintWriter(socket.getOutputStream());
 				in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
+				System.out.println("Got req!!");
 				request = gson.fromJson(in.readLine(), SchedulerRequest.class);
 			} catch (IOException e) {
-				if (DEBUG) System.out.println("[RM] Failed parsing scheduler request: " + e.getMessage());
+				//if (DEBUG) 
+					System.out.println("[RM] Failed parsing scheduler request: " + e.getMessage());
 				if (out != null) {
 					out.println(gson.toJson(false));
 					out.flush();
@@ -135,14 +140,17 @@ public class ResourceManager {
 			}
 
 			if (request == null) {
-				if (DEBUG) System.out.println("[RM] Scheduler request not found.");
+				//if (DEBUG)
+				System.out.println("[RM] Scheduler request not found.");
 				out.println(gson.toJson(null));
 			} else {
-				if (DEBUG) System.out.println("[RM] Receive a " + request.getType() + " request from " + request.getSchedulerName());
+				//if (DEBUG)
+					System.out.println("[RM] Receive a " + request.getType() + " request from " + request.getSchedulerName());
 
 				switch(request.getType()) {
 				case GETNODES:
 					// return the status of all nodes, including the ones that are busy
+					System.out.println("GETNODES Called");
 					HashMap<String, NodeInfo> reply = new HashMap<String, NodeInfo>();
 					NodeInfo nodeInfo;
 					synchronized (nodeManager.nodesLock) {
@@ -160,8 +168,9 @@ public class ResourceManager {
 					out.println(gson.toJson(reply));
 					break;
 				case LEASE:
+					System.out.println("LEASING Called");
 					HashMap<String, Lease> successfullyLeasedNodes = handleLease(request);
-					if (DEBUG) System.out.println("[RM] Leased: " + successfullyLeasedNodes.keySet() + " by " + request.getSchedulerName());
+					System.out.println("[RM] Leased: " + successfullyLeasedNodes.keySet() + " by " + request.getSchedulerName());
 					out.println(gson.toJson(successfullyLeasedNodes));
 					break;
 				case RELEASE:
@@ -200,10 +209,16 @@ public class ResourceManager {
 		HashMap<String, Lease> successfullyLeasedNodes = new HashMap<String, Lease>();
 
 		synchronized (nodeManager.nodesLock) {
+			System.out.println("Inside Synchronisation for Lease");
+			if(leaseRequest == null)
+				System.out.println("Lease Req is null");
+			else
+				System.out.println("Lease Re is "+leaseRequest.toString());
 			for (String nodeId: leaseRequest.getLeaseNodes()) {
+				System.out.println("Inside for loop, node id is"+nodeId);
 				if (nodeManager.getNodes().get(nodeId) == null) {
 					// the node is not available
-					if (DEBUG) System.out.println("[RM] " + nodeId + " is not available."); 
+					System.out.println("[RM] " + nodeId + " is not available."); 
 					continue;
 				}
 

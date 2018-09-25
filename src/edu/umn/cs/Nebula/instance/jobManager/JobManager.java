@@ -47,7 +47,7 @@ public abstract class JobManager {
 
 	/* Node and lease utilities */
 	protected static String resourceManagerServer = "localhost";
-	protected static int resourceManagerPort;
+	protected static int resourceManagerPort=6414;
 	protected static int nodePort = 2021;
 	protected static HashMap<String, NodeInfo> onlineNodes = new HashMap<String, NodeInfo>();
 	protected static HashMap<String, RunningTask> usedNodes = new HashMap<String, RunningTask>();
@@ -226,6 +226,7 @@ public abstract class JobManager {
 						jobId++;
 						jobQueue.add(job);
 						response = "Job ID: " + Long.toString(jobId - 1);
+						System.out.println("Job ID put to schedule queue");
 					}
 					synchronized (schedulerWait) {
 						// notify the scheduler there is a new job in the queue
@@ -517,7 +518,7 @@ public abstract class JobManager {
 			socket = new Socket(resourceManagerServer, resourceManagerPort);
 			out = new PrintWriter(socket.getOutputStream());
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
+			
 			// send a GETNODES request to the resource manager
 			out.println(gson.toJson(request));
 			out.flush();
@@ -570,17 +571,22 @@ public abstract class JobManager {
 
 		if (leaseRequest == null || leaseRequest.isEmpty()) {
 			if (DEBUG)
-				System.out.println("[" + name + "] Lease is null or empty.");
+				System.out.println("[" + name + "] Lease Request is null or empty.");
 			return null;
 		}
 
 		for (String nodeId : leaseRequest.keySet()) {
 			// we can only lease nodes that are currently not being used by
 			// another scheduler
+			System.out.println("JobManager --> NodeID from Request is "+nodeId);
+			//(onlineNodes.get(nodeId).getNote().equals("0") || &&  leases.containsKey(nodeId)
 			if (onlineNodes.containsKey(nodeId)
-					&& (onlineNodes.get(nodeId).getNote().equals("0") || leases.containsKey(nodeId))) {
+					) {
 				request.addLease(nodeId, leaseRequest.get(nodeId));
+				System.out.println("Lease for Node added");
 			}
+			else
+				System.out.println("Not added problem with onlineNodes");
 		}
 
 		try {
@@ -639,9 +645,13 @@ public abstract class JobManager {
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
 			// send a REALEASE message to the resource manager
+			System.out.println("Sending Lease Message to RM");
 			out.println(gson.toJson(request));
 			out.flush();
-			success = gson.fromJson(in.readLine(), Boolean.class);
+			System.out.println("Rcving Lease Message to RM");
+			String str;
+			success = gson.fromJson(str = in.readLine(), Boolean.class);
+			System.out.println("Lease message is: "+str);
 		} catch (IOException e) {
 			System.err.println("[" + name + "] Failed releasing nodes: " + e);
 		} finally {

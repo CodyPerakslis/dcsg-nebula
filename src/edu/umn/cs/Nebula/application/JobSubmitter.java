@@ -14,8 +14,8 @@ import edu.umn.cs.Nebula.request.JobRequest;
 import edu.umn.cs.Nebula.request.JobRequestType;
 
 public class JobSubmitter {
-	private final static String jobManager = "134.84.121.87";
-	private final static int jobSubmissionPort = 6411;
+	private final static String jobManager = "localhost";//"134.84.121.87";
+	private final static int jobSubmissionPort = 6420;//6411;
 	private final static Gson gson = new Gson();
 
 	public static void main(String[] args) throws IOException, InterruptedException {		

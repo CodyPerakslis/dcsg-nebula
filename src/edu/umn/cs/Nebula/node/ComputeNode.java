@@ -8,8 +8,10 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
 
 import edu.umn.cs.Nebula.job.JobType;
 import edu.umn.cs.Nebula.job.RunningTask;
@@ -19,24 +21,26 @@ import edu.umn.cs.Nebula.request.TaskRequest;
 import edu.umn.cs.Nebula.request.TaskRequestType;
 
 
+
 public class ComputeNode extends Node {
 	/* Connection configuration */
-	private static final String jobManager = "134.84.121.87"; 	// hemant:		134.84.121.87
+	private static final String jobManager = "localhost"; 	// hemant:		134.84.121.87
 																// local: 		131.212.250.189
 																// planetlab: 	139.78.141.243
-	private static final int jobManagerPort = 6412;
+	private static final int jobManagerPort = 6422; //6412;
 	private static final int jobManagerTaskUpdatePort = 6411;
-	private static final int taskRequestPort = 6410;
+	private static final int taskRequestPort = 2021;//6421;//6410;
 
 	// Structures and locks for tasks
 	private static LinkedHashMap<String, Process> runningTasks = new LinkedHashMap<String, Process>();
 	private static LinkedHashMap<String, Thread> taskListeners = new LinkedHashMap<String, Thread>();
 	private static LinkedHashMap<String, TaskInfo> taskStatuses = new LinkedHashMap<String, TaskInfo>();
+	//not using the below hardcoding
 	private static String taskDirectory = "/home/umn_nebula/albert/";
 	private static final Object tasksLock = new Object();
 	private static final Object taskStatusLock = new Object();
 	private static final long maxInactive = 30000;
-
+	private static String propertiespath = " ";
 	private static final boolean DEBUG = true;
 
 	/**
@@ -46,13 +50,15 @@ public class ComputeNode extends Node {
 	public static void main(String args[]) throws InterruptedException, IOException {
 		if (args.length > 0) {
 			taskDirectory = args[0];
+			propertiespath = args[1];
 		}
-		nodeInfo.setNodeType(NodeType.COMPUTE);
 		getNodeInformation();
-
+		nodeInfo.setNodeType(NodeType.COMPUTE);
+		
 		nodeInfo.getResources().setNumCPUs(1);
 		// Connect to the Job Manager
 		Thread ping = new Thread(new Ping(jobManager, jobManagerPort));
+		System.out.println("Pinging to jobManager:"+jobManager+" Port:"+jobManagerPort);
 		ping.start();
 
 		// Periodically check the status of all running tasks
@@ -124,8 +130,8 @@ public class ComputeNode extends Node {
 
 			while (true) {
 				now = System.currentTimeMillis();
-				update = new TaskRequest(new RunningTask(-1, JobType.MOBILE, null), TaskRequestType.UPDATE);
-
+				//update = new TaskRequest(new RunningTask(-1, JobType.MOBILE, null), TaskRequestType.UPDATE);
+				update = new TaskRequest(new RunningTask(-1, JobType.STREAM, null), TaskRequestType.UPDATE);
 				if (DEBUG) {
 					synchronized (taskStatusLock) {
 						System.out.println("[" + nodeInfo.getId() + "] Running Tasks: " + runningTasks.keySet());
@@ -236,6 +242,7 @@ public class ComputeNode extends Node {
 			BufferedReader br = null;
 			PrintWriter pw = null;
 			Process child;
+			Process childcompile;
 			String processId;
 			Thread childMonitor;
 			String parameters = "";
@@ -287,16 +294,59 @@ public class ComputeNode extends Node {
 						parameters += task.getParameters().get(i) + " ";
 					}
 				}
+				
+				if(task.isRemote())
+				{
+					String url = task.getUrlOfExecutableFile();
+					String[] cmd = { "wget "+url };
+		    		 Process script_exec;
+					try {
+						script_exec = Runtime.getRuntime().exec(cmd);
+						script_exec.waitFor();
+			    		  if(script_exec.exitValue() != 0){
+			    		   System.out.println("Error while executing script");
+			    		  }
+			    		  BufferedReader stdInput = new BufferedReader(new
+			    		                InputStreamReader(script_exec.getInputStream()));
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					 
+				}
 				// the process ID is set to <jobID_taskID>
 				processId = task.getJobId() + "_" + task.getId();
 				try {
+					System.out.println("Here!");
 					// launch the task
 					if (DEBUG)
 						System.out.println("[" + nodeInfo.getId() + "] Running: " + task.getCommand() + " "
-								+ taskDirectory + task.getExecutableFile() + " " + parameters);
+								+ taskDirectory + task.getExecutableFile() + " " + propertiespath +parameters);
+					System.out.println("Setting off Edgent App");
 					child = Runtime.getRuntime()
-							.exec(task.getCommand() + " " + taskDirectory + task.getExecutableFile() + " " + parameters);
-					// make sure the child is running
+							.exec(task.getCommand() + " " + taskDirectory + task.getExecutableFile() + " " +propertiespath+ parameters);
+//					//If the above does not work, please consider setting the classpath as in below example, when you load the Edgent_Filtered into workspace:
+					
+					//child = Runtime.getRuntime().exec("java -cp /Users/ayushi/Downloads/edgent-1.1.0/bin org.apache.edgent.samples.connectors.mqtt.edgentapp /Users/ayushi/Downloads/Nebula/mqtt.properties");
+					BufferedReader stdInput2 = new BufferedReader(new 
+						     InputStreamReader(child.getInputStream()));
+					BufferedReader stdError2 = new BufferedReader(new 
+						     InputStreamReader(child.getErrorStream()));
+					// read the output from the command
+					System.out.println("Here is the standard output of the command:\n");
+					String s2 = null;
+					while ((s2 = stdInput2.readLine()) != null) {
+					    System.out.println(s2);
+					}
+
+					// read any errors from the attempted command
+					System.out.println("Here is the standard error of the command (if any):\n");
+					while ((s2 = stdError2.readLine()) != null) {
+					    System.out.println(s2);
+					}
 					boolean childRunning = false;
 					int exitValue = 0;
 					try {
@@ -325,7 +375,7 @@ public class ComputeNode extends Node {
 					}
 					reply = "Failed running task";
 					break;
-				}
+				} 
 				reply = "OK";
 				break;
 			case CANCEL:
@@ -451,10 +501,12 @@ public class ComputeNode extends Node {
 
 			while (true) {
 				try {
+					
+					
 					message = in.readLine();
 					if (message == null || message.isEmpty()) {
 						if (DEBUG)
-							System.out.println("[" + nodeInfo.getId() + "] Empty message");
+							System.out.print("[" + nodeInfo.getId() + "] Empty message");
 						continue;
 					}
 					update = message.split(":");
@@ -481,6 +533,9 @@ public class ComputeNode extends Node {
 					}
 				} catch (IOException e) {
 					return;
+				} catch (Exception e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
 				}
 			}
 		}
