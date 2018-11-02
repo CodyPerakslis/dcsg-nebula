@@ -26,21 +26,6 @@ public class Job implements Comparable<Job> {
 	private String executableFile;
 	private ArrayList<String> parameters;
 	
-	private int minimumlatitude;
-	private int minimumlongitude;
-	private int maximumlatitude;
-	private int maximumlongitude;
-	private String urlOfExecutableFile;
-	private boolean isRemote;
-	
-	public boolean isRemote() {
-		return isRemote;
-	}
-
-	public void setRemote(boolean isRemote) {
-		this.isRemote = isRemote;
-	}
-
 	private HashMap<Long, Task> tasks;
 	
 	public Job(int id, int applicationId, JobType type, String command, String executableFile, TaskStatus status) {
@@ -57,69 +42,6 @@ public class Job implements Comparable<Job> {
 		this.executableFile = executableFile;
 		this.parameters = new ArrayList<String>();
 		this.tasks = new HashMap<Long, Task>();
-		
-	}
-	
-	public Job(int id, int applicationId, JobType type, String command, String executableFile, TaskStatus status, int maxlat, int minlat, int maxlong, int minlong, String urlofapp, boolean remote) {
-		this.jobId = id;
-		this.applicationId = applicationId;
-		this.priority = Job.DEFAULT_PRIORITY;
-		this.type = type;
-		this.isActive = true;
-		this.isCompleted = false;
-		this.dependencies = new ArrayList<Long>();
-		this.postedTime = new Date();
-		this.inputFiles = new ArrayList<String>();
-		this.command = command;
-		this.executableFile = executableFile;
-		this.parameters = new ArrayList<String>();
-		this.tasks = new HashMap<Long, Task>();
-		this.maximumlatitude=maxlat;
-		this.maximumlongitude=maxlong;
-		this.minimumlatitude=minlat;
-		this.minimumlongitude=minlong;
-		this.urlOfExecutableFile=urlofapp;
-		this.isRemote=remote;
-	}
-
-	public String getUrlOfExecutableFile() {
-		return urlOfExecutableFile;
-	}
-
-	public void setUrlOfExecutableFile(String urlOfExecutableFile) {
-		this.urlOfExecutableFile = urlOfExecutableFile;
-	}
-
-	public int getMinimumlatitude() {
-		return minimumlatitude;
-	}
-
-	public void setMinimumlatitude(int minimumlatitude) {
-		this.minimumlatitude = minimumlatitude;
-	}
-
-	public int getMinimumlongitude() {
-		return minimumlongitude;
-	}
-
-	public void setMinimumlongitude(int minimumlongitude) {
-		this.minimumlongitude = minimumlongitude;
-	}
-
-	public int getMaximumlatitude() {
-		return maximumlatitude;
-	}
-
-	public void setMaximumlatitude(int maximumlatitude) {
-		this.maximumlatitude = maximumlatitude;
-	}
-
-	public int getMaximumlongitude() {
-		return maximumlongitude;
-	}
-
-	public void setMaximumlongitude(int maximumlongitude) {
-		this.maximumlongitude = maximumlongitude;
 	}
 
 	public Job(int id, int applicationId, int priority, JobType type, String command, String executableFile, TaskStatus status) {
